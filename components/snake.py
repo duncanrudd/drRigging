@@ -25,6 +25,7 @@ class DrSnake(drBase.DrBaseComponent):
     def build(self, start, end, numFkCtrls, jointsPerCtrl, numIkCtrls, latticeDivisions, axis, upAxis):
         start, end = coreUtils.getStartAndEnd(start, end)
         ctrlSize = coreUtils.getDistance(start, end) * .2
+        radius=1
 
         # main control
         baseCtrl = controls.circleBumpCtrl(radius=ctrlSize,
@@ -84,95 +85,7 @@ class DrSnake(drBase.DrBaseComponent):
             outBc.output.connect(ikHardCrv.controlPoints[(i*3)+1])
             ikSoftCrv.controlPoints[i].connect(ikHardCrv.controlPoints[i*3])
 
-        # Arclen stuff for stretching vs maintaining length
-        stretch = curveUtils.getCurveStretch(ikSoftCrv, name='%s' % self.name)
-
-        blendCond = pmc.createNode('condition', name='%s_stretchIsNegative_utl' % self.name)
-        stretch['stretchFactor'].outputX.connect(blendCond.firstTerm)
-        self.mainGrp.globalScale.connect(stretch['globalScaleFactor'].input1X)
-        blendCond.operation.set(4)
-        blendCond.secondTerm.set(1.0)
-        blendCond.colorIfFalseR.set(1.0)
-        stretch['stretchFactor'].outputX.connect(blendCond.colorIfTrueR)
-
-        stretchGoal = coreUtils.blend(1.0, baseCtrl.stretch, name='%s_stretchGoal_utl' % self.name, blendAttr=blendCond.outColorR)
-        rangeMax = coreUtils.blend(stretchGoal.outputR, 1.0, name='%s_rangeMax_utl' % self.name, blendAttr=baseCtrl.anchor)
-        rangeMin = coreUtils.minus([rangeMax.outputR, stretchGoal.outputR], name='%s_rangeMin_utl' % self.name)
-
-        tailParam = coreUtils.blend(rangeMin.output1D, rangeMax.outputR,  name='%s_tailParam_utl' % self.name, blendAttr=baseCtrl.tail_extend)
-        headParam = coreUtils.blend(rangeMin.output1D, rangeMax.outputR, name='%s_headParam_utl' % self.name, blendAttr=baseCtrl.head_extend)
-
-        # motionPath nodes for upnode joints
-        upNodeMps = []
-        for i in range(numFkCtrls):
-            num = str(i+1).zfill(2)
-            mp = pmc.createNode('motionPath', name='%s_upNodeMp_%s_utl' % (self.name, num))
-            mp.fractionMode.set(1)
-            ikSoftCrv.worldSpace[0].connect(mp.geometryPath)
-            param = (1.0 / (numFkCtrls-1)) * i
-            paramBlend = coreUtils.blend(tailParam.outputR, headParam.outputR, name='%s_upNodeParam_%s_utl' % (self.name, num))
-            paramBlend.blender.set(param)
-            paramBlend.outputR.connect(mp.uValue)
-            upNodeMps.append(mp)
-
-        # IK joints to use for upnodes
-        upVecs=[]
-        upVecs.append(coreUtils.matrixAxisToVector(baseCtrl, name='%s_baseUpVector_utl' % self.name, axis='y'))
-        for i in range(numFkCtrls):
-            num = str(i+1).zfill(2)
-            pmc.select(self.rigGrp)
-            baseJnt = pmc.joint(name='%s_upVecBase_%s_jnt' % (self.name, num))
-            endJnt = pmc.joint(name='%s_upVecEnd_%s_jnt' % (self.name, num))
-            endJnt.tz.set(1.0)
-            ikHandle = pmc.ikHandle(solver='ikRPsolver', name='%s_upVec_%s_ikHandle' % (self.name, num), startJoint=baseJnt, endEffector=endJnt, setupForRPsolver=1)[0]
-            ikHandle.poleVector.set(0, 0, 0)
-            upNodeMps[i].allCoordinates.connect(baseJnt.t)
-            upNodeMps[i+1].allCoordinates.connect(ikHandle.t)
-            upVecs.append(coreUtils.matrixAxisToVector(baseJnt, name='%s_ikUpVector_%s_utl' % (self.name, num), axis='y'))
-
-        # Motion path nodes
-        pathMatricesSoft = []
-        pathMatricesSharp = []
-        for i in range(numFkCtrls * jointsPerCtrl):
-            num = str(i+1).zfill(2)
-            mpSoft = pmc.createNode('motionPath', name='%s_mp_%s_soft_utl' % (self.name, num))
-            mpSoft.fractionMode.set(1)
-            mpSoft.follow.set(1)
-            mpSoft.frontAxis.set(2)
-            mpSoft.upAxis.set(1)
-            mpSharp = pmc.createNode('motionPath', name='%s_mp_%s_hard_utl' % (self.name, num))
-            mpSharp.fractionMode.set(1)
-            mpSharp.follow.set(1)
-            mpSharp.frontAxis.set(2)
-            mpSharp.upAxis.set(1)
-            poi = pmc.createNode('pointOnCurveInfo', name='%s_curveInfo_%s_utl' % (self.name, num))
-            coreUtils.connectAttrToMany(ikSoftCrv.worldSpace[0], [mpSoft.geometryPath, mpSharp.geometryPath, poi.inputCurve])
-            param = 1.0 / ((numFkCtrls * jointsPerCtrl)-1) * i
-            paramBlend = coreUtils.blend(tailParam.outputR, headParam.outputR, name='%s_param_%s_utl' % (self.name, num))
-            paramBlend.blender.set(param)
-            coreUtils.connectAttrToMany(paramBlend.outputR, [mpSoft.uValue, mpSharp.uValue, poi.parameter])
-
-            mtxSoft = pmc.createNode('composeMatri', name='%s_pathMtxSoft_%s_utl' % (self.name, num))
-            mpSoft.allCoordinates.connect(mtxSoft.inputTranslate)
-            mpSoft.rotate.connect(mtxSoft.inputRotate)
-            pathMatricesSoft.append(mtxSoft)
-
-            mtxSharp = pmc.createNode('composeMatri', name='%s_pathMtxSharp_%s_utl' % (self.name, num))
-            mpSoft.allCoordinates.connect(mtxSharp.inputTranslate)
-            mpSoft.rotate.connect(mtxSharp.inputRotate)
-            pathMatricesSharp.append(mtxSharp)
-
-            # Up vector stuff
-            startUpVec = upVecs[0]
-            endUpVec = upVecs[1]
-            if i != 0:
-                startUpVec = upVecs[numFkCtrls / i]
-                endUpVec = upVecs[(numFkCtrls / i) + 1]
-
-            upVecBlend = coreUtils.blend(startUpVec.output, endUpVec.output, name='%s_upVecBlend_%s_utl' % (self.name, num))
-            upVecBlend.blender.set((1.0 / (numIkCtrls - 1) * (i%numIkCtrls)))
-            coreUtils.connectAttrToMany(upVecBlend.output, [mpSoft.worldUpVector, mpSharp.worldUpVector])
-
+        '''
         # Create Lattice
         pmc.select([])
         lattice = pmc.lattice(dv=(2, 2, numIkCtrls*latticeDivisions), scale=(2, 2, coreUtils.getDistance(start, end)), ro=(0, 0, 45))
@@ -180,20 +93,113 @@ class DrSnake(drBase.DrBaseComponent):
         lattice[1].rename('%s_lattice_cage' % self.name)
         lattice[2].rename('%s_lattice_base' % self.name)
         coreUtils.align(lattice[2], lattice[1], scale=1)
+        '''
 
-        # create vectors and blends for each lattice point
-        for i in range(numFkCtrls * jointsPerCtrl):
+        # create linear curves around each ik curve
+        posYCrvSoft = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_posY_soft_crv' % self.name, degree=1)
+        pmc.select('%s.cv[ * ]' % posYCrvSoft)
+        pmc.move(radius, moveY=1)
+        negYCrvSoft = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_negY_soft_crv' % self.name, degree=1)
+        pmc.select('%s.cv[ * ]' % negYCrvSoft)
+        pmc.move(radius*-1, moveY=1)
+        posXCrvSoft = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_posX_soft_crv' % self.name, degree=1)
+        pmc.select('%s.cv[ * ]' % posXCrvSoft)
+        pmc.move(radius, moveX=1)
+        negXCrvSoft = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_negX_soft_crv' % self.name, degree=1)
+        pmc.select('%s.cv[ * ]' % negXCrvSoft)
+        pmc.move(radius*-1, moveX=1)
+        for crv in [posYCrvSoft, negYCrvSoft, posXCrvSoft, negXCrvSoft]:
+            pmc.select([])
+            #pmc.wire(crv, ikSoftCrv, name=crv.name().replace('crv', 'wire'), dds=[0, radius*100.0])
+
+        posYCrvSharp = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_posY_sharp_crv' % self.name, degree=1)
+        pmc.select('%s.cv[ * ]' % posYCrvSharp)
+        pmc.move(radius, moveY=1)
+        negYCrvSharp = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_negY_sharp_crv' % self.name, degree=1)
+        pmc.select('%s.cv[ * ]' % negYCrvSharp)
+        pmc.move(radius*-1, moveY=1)
+        posXCrvSharp = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_posX_sharp_crv' % self.name, degree=1)
+        pmc.select('%s.cv[ * ]' % posXCrvSharp)
+        pmc.move(radius, moveX=1)
+        negXCrvSharp = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_negX_sharp_crv' % self.name, degree=1)
+        pmc.select('%s.cv[ * ]' % negXCrvSharp)
+        pmc.move(radius*-1, moveX=1)
+        for crv in [posYCrvSharp, negYCrvSharp, posXCrvSharp, negXCrvSharp]:
+            pmc.select([])
+            #pmc.wire(crv, ikHardCrv, name=crv.name().replace('crv', 'wire'), dds=[0, radius*100.0])
+
+        # create linear curves to drive the lattice
+        posYCrv = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_posY_crv' % self.name, degree=1)
+        pmc.select('%s.cv[ * ]' % posYCrv)
+        pmc.move(radius, moveY=1)
+        negYCrv = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_negY_crv' % self.name, degree=1)
+        pmc.select('%s.cv[ * ]' % negYCrv)
+        pmc.move(radius*-1, moveY=1)
+        posXCrv = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_posX_crv' % self.name, degree=1)
+        pmc.select('%s.cv[ * ]' % posXCrv)
+        pmc.move(radius, moveX=1)
+        negXCrv = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_negX_crv' % self.name, degree=1)
+        pmc.select('%s.cv[ * ]' % negXCrv)
+        pmc.move(radius*-1, moveX=1)
+
+        # point on curve info nodes for measuring curvature at joints
+        infoNodes = curveUtils.sampleCurve(crv=ikHardCrv, numSamples=numIkCtrls, name='ikCrv')
+
+        # create vectors from info nodes to lattice points and from info nodes to curvature centres
+        latticeVecsY = []
+        latticeVecsX = []
+        for i in range(numIkCtrls):
             num = str(i+1).zfill(2)
-            xPosSoftVp = coreUtils.pointMatrixMult((1,0,0), pathMatricesSoft[i].outputMatrix, name='%s_xPosSoft_%s_utl' % (self.name, num))
-            xPosSharpVp = coreUtils.pointMatrixMult((1,0,0), pathMatricesSharp[i].outputMatrix, name='%s_xPosSharp_%s_utl' % (self.name, num))
-            xPosBc = coreUtils.blend(xPosSoftVp.output, xPosSharpVp.output, name='%s_sPosBlend_%s_utl' % (self.name, num))
+            pmaY = coreUtils.minus([posYCrvSharp.controlPoints[i*latticeDivisions], infoNodes[i].result.position], name='%s_vecY_%s_utl' % (self.name, num))
+            vpY = coreUtils.normalizeVector(pmaY.output3D, name='%s_vecYNormalized_%s_utl' % (self.name, num))
 
+            pmaX = coreUtils.minus([posXCrvSharp.controlPoints[i*latticeDivisions], infoNodes[i].result.position], name='%s_vecX_%s_utl' % (self.name, num))
+            vpX = coreUtils.normalizeVector(pmaX.output3D, name='%s_vecXNormalized_%s_utl' % (self.name, num))
 
+            pmaC = coreUtils.minus([infoNodes[i].result.curvatureCenter, infoNodes[i].result.position], name='%s_vecX_%s_utl' % (self.name, num))
+            curvatureCond = pmc.createNode('condition', name='%s_isCurved_%s_utl' % (self.name, num))
+            infoNodes[i].curvatureRadius.connect(curvatureCond.firstTerm)
+            curvatureCond.colorIfTrue.set((0, 1, 0))
+            pmaC.output3D.connect(curvatureCond.colorIfFalse)
+            vpC = coreUtils.normalizeVector(curvatureCond.outColor, name='%s_vecYNormalized_%s_utl' % (self.name, num))
 
+            dotY = coreUtils.dot(vpC.output, vpY.output, name='%s_dotY_%s_utl' % (self.name, num))
+            dotYRemap = pmc.createNode('remapValue', name='%s_dotYNormalized_%s_utl' % (self.name, num))
+            dotY.outputX.connect(dotYRemap.inputValue)
+            dotYRemap.inputMin.set(-1)
+            dotYRev = coreUtils.reverse(dotYRemap.outValue, name='%s_dotYReversed_%s_utl' % (self.name, num))
 
+            dotX = coreUtils.dot(vpC.output, vpX.output, name='%s_dotX_%s_utl' % (self.name, num))
+            dotXRemap = pmc.createNode('remapValue', name='%s_dotXNormalized_%s_utl' % (self.name, num))
+            dotX.outputX.connect(dotXRemap.inputValue)
+            dotXRemap.inputMin.set(-1)
+            dotXRev = coreUtils.reverse(dotYRemap.outValue, name='%s_dotXReversed_%s_utl' % (self.name, num))
+
+            innerMultY = coreUtils.multiply(dotYRemap.outValue, self.ikCtrls[i].inner_sharpness, name='%s_innerSharpenY_%s_utl' % (self.name, num))
+            outerMultY = coreUtils.multiply(dotYRev.outputX, self.ikCtrls[i].outer_sharpness, name='%s_outerSharpenY_%s_utl' % (self.name, num))
+            sharpenPosY = coreUtils.add([innerMultY.outputX, outerMultY.outputX], name='%s_sharpenPosY_%s_utl' % (self.name, num))
+            sharpenNegY = coreUtils.convert(sharpenPosY.output1D, -1.0, name='%s_sharpenNegY_%s_utl' % (self.name, num))
+
+            innerMultX = coreUtils.multiply(dotXRemap.outValue, self.ikCtrls[i].inner_sharpness, name='%s_innerSharpenX_%s_utl' % (self.name, num))
+            outerMultX = coreUtils.multiply(dotXRev.outputX, self.ikCtrls[i].outer_sharpness, name='%s_outerSharpenX_%s_utl' % (self.name, num))
+            sharpenPosX = coreUtils.add([innerMultX.outputX, outerMultX.outputX], name='%s_sharpenPosX_%s_utl' % (self.name, num))
+            sharpenNegX = coreUtils.convert(sharpenPosX.output1D, -1.0, name='%s_sharpenNegX_%s_utl' % (self.name, num))
+
+            bcPosY = coreUtils.blend(posYCrvSoft.controlPoints[i], posYCrvSharp.controlPoints[i], name='%s_blendPosY_%s_utl' % (self.name, num), blendAttr=sharpenPosY.output1D)
+            bcPosY.output.connect(posYCrv.controlPoints[i])
+
+            bcNegY = coreUtils.blend(negYCrvSoft.controlPoints[i], negYCrvSharp.controlPoints[i], name='%s_blendNegY_%s_utl' % (self.name, num), blendAttr=sharpenNegY.output)
+            bcNegY.output.connect(negYCrv.controlPoints[i])
+
+            bcPosX = coreUtils.blend(posXCrvSoft.controlPoints[i], posXCrvSharp.controlPoints[i], name='%s_blendPosX_%s_utl' % (self.name, num), blendAttr=sharpenPosX.output1D)
+            bcPosX.output.connect(posXCrv.controlPoints[i])
+
+            bcNegX = coreUtils.blend(negXCrvSoft.controlPoints[i], negXCrvSharp.controlPoints[i], name='%s_blendNegX_%s_utl' % (self.name, num), blendAttr=sharpenNegX.output)
+            bcNegX.output.connect(negXCrv.controlPoints[i])
 
 
 
 
     def cleanUp(self):
-        super(DrSnake, self).cleanUp()
+        pass
+        #super(DrSnake, self).cleanUp()
