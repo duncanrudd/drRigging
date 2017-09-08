@@ -1,9 +1,9 @@
-import drRigging.python.components.base as drBase
-import drRigging.python.components.twistySegment as drTwistySegment
-import drRigging.python.utils.coreUtils as coreUtils
-import drRigging.python.utils.componentUtils as componentUtils
-import drRigging.python.objects.controls as controls
-import drRigging.python.objects.rigObjects as rigObjects
+import drRigging.components.base as drBase
+import drRigging.components.twistySegment as drTwistySegment
+import drRigging.utils.coreUtils as coreUtils
+import drRigging.utils.componentUtils as componentUtils
+import drRigging.objects.controls as controls
+import drRigging.objects.rigObjects as rigObjects
 import pymel.core as pmc
 reload(drBase)
 reload(controls)

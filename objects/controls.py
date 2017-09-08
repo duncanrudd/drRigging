@@ -1,5 +1,5 @@
 import maya.cmds as cmds
-import drRigging.python.utils.coreUtils as coreUtils
+import drRigging.utils.coreUtils as coreUtils
 import pymel.core as pmc
 
 
@@ -131,7 +131,7 @@ def squareChamferCtrl(size=20.0, name='', axis='y'):
         orientCtrl(ctrl=ctrl, axis=axis)
     return ctrl
 
-def ballCtrl(radius=20, name=''):
+def ballCtrl(radius=20.0, name=''):
     ctrl = pmc.circle(name=name, r=radius, ch=0, o=1, s=8, nr=(0,1,0))[0]
     dup1 = pmc.circle(name=name, r=radius, ch=0, o=1, s=8, nr=(1,0,0))[0]
     dup2 = pmc.circle(name=name, r=radius, ch=0, o=1, s=8, nr=(0,0,1))[0]

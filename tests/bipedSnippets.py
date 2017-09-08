@@ -1,12 +1,12 @@
 import pymel.core as pmc
 
-import drRigging.python.components.root as drRoot
+import drRigging.components.root as drRoot
 reload(drRoot)
 
-import drRigging.python.components.spine as drSpine
+import drRigging.components.spine as drSpine
 reload(drSpine)
 
-import drRigging.python.utils.componentUtils as componentUtils
+import drRigging.utils.componentUtils as componentUtils
 reload(componentUtils)
 
 
@@ -41,12 +41,12 @@ import pymel.core as pmc
 
 pmc.setAttr("spine_L_upVec_utl.colorIfTrue", (3, 3, 3))
 
-import drRigging.python.utils.componentUtils as componentUtils
+import drRigging.utils.componentUtils as componentUtils
 reload(componentUtils)
 
 shldr = componentUtils.addCtrl(pmc.selected()[0], pmc.selected()[1], 'shldr_L', ctrlSize=6)
 
-import drRigging.python.components.root as drRoot
+import drRigging.components.root as drRoot
 reload(drRoot)
 
 root = drRoot.DrRoot('root_M')
@@ -54,22 +54,22 @@ body = drRoot.DrRoot('body_M')
 
 componentUtils.connectIO(pmc.selected()[0], pmc.selected()[1], 'body')
 
-import drRigging.python.components.spine as drSpine
+import drRigging.components.spine as drSpine
 reload(drSpine)
 spine = drSpine.DrSpine(name='spine_L', joints=pmc.selected(), numJoints=12, axis='y', upAxis='z', worldUpAxis='z', ctrlInterval=3)
 
-import drRigging.python.components.limb as drLimb
+import drRigging.components.limb as drLimb
 reload(drLimb)
 limb = drLimb.DrTwistyLimb(name='arm_L', joints=pmc.selected(), alignIkToJoints=0, cleanUp=1)
 
 reload(componentUtils)
 componentUtils.addSpaceSwitch(node=pmc.selected()[0], name='R', spaces=['root', 'body', 'neck'], type='rotate', ctrlNode=pmc.PyNode('wings_M_base_R_ctrl'), targetNodes=[pmc.selected()[1], pmc.selected()[2], pmc.selected()[3]])
 
-import drRigging.python.components.twistySegment as twisty
+import drRigging.components.twistySegment as twisty
 reload(twisty)
 twist = twisty.DrTwistySegment(start=pmc.selected()[0], end=pmc.selected()[1], name='twisty', numDivisions=9)
 
-import drRigging.python.objects.fkChain as fkChain
+import drRigging.objects.fkChain as fkChain
 reload(fkChain)
 fkChain.fkChainBetweenPoints(pmc.selected()[0], pmc.selected()[1], name='wings_M_R', bias=0, numCtrls=5, ctrlInterval=1)
 

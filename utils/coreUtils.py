@@ -662,6 +662,36 @@ def cross(input1, input2, name, normalize=1):
     vp.operation.set(2)
     return vp
 
+def dot(input1, input2, name, normalize=1):
+    '''
+    creates a vector product node to calculate the dot product between input1 and input2.
+    Normalizes output by default
+    '''
+    vp = pmc.createNode('vectorProduct', name=name)
+    input1.connect(vp.input1)
+    input2.connect(vp.input2)
+    vp.normalizeOutput.set(normalize)
+    return vp
+
+def pointMatrixMult(point, matrix, name):
+    '''
+    returns point transformed into the space of matrix
+    '''
+    connect = False
+    vp = pmc.createNode('vectorProduct', name=name)
+    if type(point) == pmc.general.Attribute:
+        val = point.get()
+        connect = True
+    else:
+        val = point
+    if connect:
+        point.connect(vp.input1)
+    else:
+        vp.input1.set(point)
+    matrix.connect(vp.matrix)
+    vp.operartion.set(4)
+    return vp
+
 
 def matrixAxisToVector(obj, name, axis='x', normalize=1):
     '''

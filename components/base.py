@@ -1,4 +1,4 @@
-import drRigging.python.utils.coreUtils as coreUtils
+import drRigging.utils.coreUtils as coreUtils
 import pymel.core as pmc
 
 reload(coreUtils)

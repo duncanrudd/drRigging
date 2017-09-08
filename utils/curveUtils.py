@@ -1,5 +1,5 @@
 import pymel.core as pmc
-import drRigging.python.utils.coreUtils as coreUtils
+import drRigging.utils.coreUtils as coreUtils
 
 
 def curveBetweenNodes(start=None, end=None, numCVs=4, name='', degree=3):
@@ -37,6 +37,7 @@ def curveThroughPoints(positions=None, name='', degree=3, bezier=0):
         knots.append(knotsMax + 1)
 
     crv = pmc.curve(p=positions, k=knots, d=degree, name='%s_CRV' % name)
+    pmc.rebuildCurve(crv, ch=0, rpo=1, kr=0, kcp=1, d=degree)
     return crv
 
 

@@ -1,6 +1,6 @@
 import pymel.core as pmc
-import drRigging.python.utils.coreUtils as coreUtils
-import drRigging.python.objects.controls as controls
+import drRigging.utils.coreUtils as coreUtils
+import drRigging.objects.controls as controls
 reload(coreUtils)
 reload(controls)
 

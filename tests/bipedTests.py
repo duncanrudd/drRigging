@@ -7,13 +7,13 @@ reload(drRigging)
 
 import pymel.core as pmc
 
-import drRigging.python.components.root as drRoot
+import drRigging.components.root as drRoot
 reload(drRoot)
 
-import drRigging.python.components.spine as drSpine
+import drRigging.components.spine as drSpine
 reload(drSpine)
 
-import drRigging.python.utils.componentUtils as componentUtils
+import drRigging.utils.componentUtils as componentUtils
 reload(componentUtils)
 
 
@@ -27,7 +27,7 @@ componentUtils.connectIO(spine.ctrls[0].getParent(), root.ctrls[-1], 'root')
 # Create locator and place for shoulder collar bone) select spine IK ctrl then loc
 shldr = componentUtils.addCtrl(pmc.selected()[0], pmc.selected()[1], 'shldr_L', ctrlSize=6)
 # Add 4 arm guide joints
-import drRigging.python.components.limb as drLimb
+import drRigging.components.limb as drLimb
 reload(drLimb)
 limb = drLimb.DrTwistyLimb(name='arm_L', joints=pmc.selected(), alignIkToJoints=0, cleanUp=1)
 

@@ -1,7 +1,7 @@
-import drRigging.python.components.base as drBase
-import drRigging.python.utils.coreUtils as coreUtils
-import drRigging.python.utils.curveUtils as curveUtils
-import drRigging.python.objects.controls as controls
+import drRigging.components.base as drBase
+import drRigging.utils.coreUtils as coreUtils
+import drRigging.utils.curveUtils as curveUtils
+import drRigging.objects.controls as controls
 import pymel.core as pmc
 reload(drBase)
 reload(controls)

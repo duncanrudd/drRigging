@@ -1,29 +1,29 @@
 import pymel.core as pmc
-import drRigging.python.utils.coreUtils as coreUtils
+import drRigging.utils.coreUtils as coreUtils
 reload(coreUtils)
 
-import drRigging.python.utils.curveUtils as curveUtils
+import drRigging.utils.curveUtils as curveUtils
 reload(curveUtils)
 
-import drRigging.python.components.root as drRoot
+import drRigging.components.root as drRoot
 reload(drRoot)
 
-import drRigging.python.components.spine as drSpine
+import drRigging.components.spine as drSpine
 reload(drSpine)
 
-import drRigging.python.components.limb as drLimb
+import drRigging.components.limb as drLimb
 reload(drLimb)
 
-import drRigging.python.utils.componentUtils as componentUtils
+import drRigging.utils.componentUtils as componentUtils
 reload(componentUtils)
 
-import drRigging.python.components.hand as drHand
+import drRigging.components.hand as drHand
 reload(drHand)
 
-import drRigging.python.components.reverseFoot as drFoot
+import drRigging.components.reverseFoot as drFoot
 reload(drFoot)
 
-import drRigging.python.components.twistySegment as drTwistySegment
+import drRigging.components.twistySegment as drTwistySegment
 reload(drTwistySegment)
 
 bipedDict = {

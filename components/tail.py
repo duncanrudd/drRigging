@@ -1,13 +1,13 @@
-import drRigging.python.components.base as drBase
+import drRigging.components.base as drBase
 reload(drBase)
-import drRigging.python.utils.coreUtils as coreUtils
+import drRigging.utils.coreUtils as coreUtils
 reload(coreUtils)
-import drRigging.python.utils.curveUtils as curveUtils
+import drRigging.utils.curveUtils as curveUtils
 reload(curveUtils)
-import drRigging.python.objects.controls as controls
+import drRigging.objects.controls as controls
 reload(controls)
 import pymel.core as pmc
-import drRigging.python.utils.componentUtils as componentUtils
+import drRigging.utils.componentUtils as componentUtils
 reload(componentUtils)
 
 class DrTail(drBase.DrBaseComponent):
@@ -53,6 +53,7 @@ class DrTail(drBase.DrBaseComponent):
         if doubleIkChain:
             pmc.addAttr(baseCtrl, ln='A_B_blend', at='double', k=1, h=0, minValue=0.0, maxValue=1.0)
         pmc.addAttr(baseCtrl, ln='stretch', at='double', k=1, h=0, minValue=0.0, maxValue=1.0)
+        pmc.addAttr(baseCtrl, ln='pin', at='enum', enumName='head:tail', k=1, h=0)
         pmc.addAttr(baseCtrl, ln='extend', at='double', k=1, h=0, minValue=0.0, maxValue=1.0)
         pmc.addAttr(baseCtrl, ln='twist', at='double', k=1, h=0)
         pmc.addAttr(baseCtrl, ln='upVector', at='enum', enumName='x:y:z', k=1, h=0)
