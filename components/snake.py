@@ -105,69 +105,13 @@ class DrSnake(drBase.DrBaseComponent):
         softSamples = curveUtils.sampleCurve(crv=ikSoftCrv, numSamples=(((numIkCtrls-1) * latticeDivisions)+1), name='%s_soft' % self.name, even=1)
         sharpSamples = curveUtils.sampleCurve(crv=ikHardCrv, numSamples=(((numIkCtrls-1) * latticeDivisions)+1), name='%s_sharp' % self.name, even=1)
 
-        '''
-        # IK joints
-        for i in range(numIkCtrls * latticeDivisions):
-            num = str(i+1).zfill(2)
-            pmc.select(self.rigGrp)
-            baseJnt = pmc.joint(name='%s_softBase_%s_jnt' % (self.name, num))
-            endJnt = pmc.joint(name='%s_softEnd_%s_jnt' % (self.name, num))
-            endJnt.tz.set(1.0)
-            ikHandle = pmc.ikHandle(solver='ikRPsolver', name='%s_soft_%s_ikHandle' % (self.name, num), startJoint=baseJnt, endEffector=endJnt, setupForRPsolver=1)[0]
-            ikHandle.poleVector.set(0, 0, 0)
-            softSamples[i].result.position.connect(baseJnt.t)
-            handlePos = coreUtils.add([softSamples[i].result.position, softSamples[i].result.normalizedTangent], name='%s_softTangentOffset_%s_utl' % (self.name, num))
-            handlePos.output3D.connect(ikHandle.t)
-        '''
-
-
-        # Matrices along path using previous sample for upVec
-        '''
-        for i in range((numIkCtrls+2)*latticeDivisions):
-            num=str(i+1).zfill(2)
-            mtx = pmc.createNode('fourByFourMatrix', name='%s_pathMtx_%s_utl' % (self.name, num))
-            upVec = None
-            if i == 0:
-                upVec = coreUtils.matrixAxisToVector(self.ikCtrls[0], name='%s_upVecSoft_%s_utl' % (self.name, num), axis='y')
-            else:
-                upVec = pmc.createNode('vectorProduct', name='%s_upVecSoft_%s_utl' % (self.name, num))
-                upVec.operation.set(0)
-                upVec.normalizeOutput.set(1)
-                matricesSoft[-1].in10.connect(upVec.input1X)
-                matricesSoft[-1].in11.connect(upVec.input1Y)
-                matricesSoft[-1].in12.connect(upVec.input1Z)
-            xVp = coreUtils.cross(softSamples[i].result.normalizedTangent, upVec.output, name='%s_xVecSoft_%s_utl' % (self.name, num))
-            yVp = coreUtils.cross(xVp.output, softSamples[i].result.normalizedTangent, name='%s_yVecSoft_%s_utl' % (self.name, num))
-
-            xVp.outputX.connect(mtx.in00)
-            xVp.outputY.connect(mtx.in01)
-            xVp.outputZ.connect(mtx.in02)
-
-            yVp.outputX.connect(mtx.in10)
-            yVp.outputY.connect(mtx.in11)
-            yVp.outputZ.connect(mtx.in12)
-
-            softSamples[i].result.normalizedTangent.normalizedTangentX.connect(mtx.in20)
-            softSamples[i].result.normalizedTangent.normalizedTangentY.connect(mtx.in21)
-            softSamples[i].result.normalizedTangent.normalizedTangentZ.connect(mtx.in22)
-
-            softSamples[i].result.position.positionX.connect(mtx.in30)
-            softSamples[i].result.position.positionY.connect(mtx.in31)
-            softSamples[i].result.position.positionZ.connect(mtx.in32)
-
-            d = coreUtils.decomposeMatrix(mtx.output, name='%s_mtxToSrtSoft_%s_utl' % (self.name, num))
-
-            matricesSoft.append(mtx)
-            srtsSoft.append(d)
-
-            g = pmc.group(empty=1)
-            d.outputTranslate.connect(g.t)
-            d.outputRotate.connect(g.r)
-        '''
         upVecs = []
         ikMainCtrls = [self.ikCtrls[i] for i in range(len(self.ikCtrls)) if not i == 1 and not i == (len(self.ikCtrls)-2)]
         srtsSoft = []
         srtsSharp = []
+
+        mtxListSoft = []
+        mtxListSharp = []
 
         def _makePathMtx(name, samp, bc):
                 mtx = pmc.createNode('fourByFourMatrix', name='%s_pathMtx%s_utl' % (self.name, name))
@@ -191,8 +135,7 @@ class DrSnake(drBase.DrBaseComponent):
                 samp.result.position.positionY.connect(mtx.in31)
                 samp.result.position.positionZ.connect(mtx.in32)
 
-                d = coreUtils.decomposeMatrix(mtx.output, name='%s_mtxToSrt%s_utl' % (self.name, name))
-                return d
+                return mtx
 
         for i in range(len(self.ikCtrls)-3):
             segStart = ikMainCtrls[i]
@@ -208,7 +151,8 @@ class DrSnake(drBase.DrBaseComponent):
                 bc.blender.set((1.0 / (latticeDivisions))*a)
 
                 # soft matrix
-                d = _makePathMtx('Soft_%s' % num, samp, bc.output)
+                mtxListSoft.append(_makePathMtx('Soft_%s' % num, samp, bc.output))
+                d = coreUtils.decomposeMatrix(mtxListSoft[-1].output, name='%s_mtxToSrtSoft_%s_utl' % (self.name, num))
                 srtsSoft.append(d)
 
                 g = pmc.group(empty=1)
@@ -218,9 +162,11 @@ class DrSnake(drBase.DrBaseComponent):
                 # Sharp matrix
                 samp = sharpSamples[(i*latticeDivisions) + a]
                 if samp == sharpSamples[0]:
+                    mtxListSharp.append(mtxListSoft[-1])
                     srtsSharp.append(d)
                 else:
-                    d = _makePathMtx('Sharp_%s' % num, samp, bc.output)
+                    mtxListSharp.append(_makePathMtx('Sharp_%s' % num, samp, bc.output))
+                    d = coreUtils.decomposeMatrix(mtxListSharp[-1].output, name='%s_mtxToSrtSharp_%s_utl' % (self.name, num))
 
                     srtsSharp.append(d)
                     g = pmc.group(empty=1)
@@ -229,34 +175,23 @@ class DrSnake(drBase.DrBaseComponent):
 
             upVecs.append(endVp)
 
-        d = _makePathMtx('Soft_%s' % len(softSamples), softSamples[-1], upVecs[-1].output)
-        print softSamples[-1]
+        mtxListSoft.append(_makePathMtx('Soft_%s' % len(softSamples), softSamples[-1], upVecs[-1].output))
+        mtxListSharp.append(mtxListSoft[-1])
+        d = coreUtils.decomposeMatrix(mtxListSoft[-1].output, name='%s_mtxToSrtSharp_%s_utl' % (self.name, num))
         srtsSoft.append(d)
         srtsSharp.append(d)
         g = pmc.group(empty=1)
-        print g
         d.outputTranslate.connect(g.t)
         d.outputRotate.connect(g.r)
-
-
-        # create linear curves to drive the lattice
-        posYCrv = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_posY_crv' % self.name, degree=1)
-
-        negYCrv = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_negY_crv' % self.name, degree=1)
-
-        posXCrv = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_posX_crv' % self.name, degree=1)
-
-        negXCrv = curveUtils.curveBetweenNodes(start, end, numCVs=numIkCtrls*latticeDivisions, name='%s_negX_crv' % self.name, degree=1)
 
         # create point field along hard and soft curves
         softPoints = []
         sharpPoints = []
+        localPoints = []
         blendPoints = []
 
-        def _makePoint(name, vector, sampleArray):
-                point = pmc.createNode('plusMinusAverage', name='%s_%s_utl' % (self.name, name))
-                point.input3D[0].set(vector)
-                sampleArray[i].result.position.connect(point.input3D[1])
+        def _makePoint(name, vector, matrix):
+                point = coreUtils.pointMatrixMult(vector, matrix, name='%s_%s_utl' % (self.name, name))
                 return point
 
         for i in range(len(softSamples)):
@@ -264,82 +199,106 @@ class DrSnake(drBase.DrBaseComponent):
 
             vecs = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0)]
             names = ['posX', 'negX', 'posY', 'negY']
+            pointDictSoft = {}
+            pointDictSharp = {}
             for a in range(4):
-                softPoints.append(_makePoint('%sSoft_%s' % (names[a], num), vecs[a], softSamples))
-                sharpPoints.append(_makePoint('%sSharp_%s' % (names[a], num), vecs[a], sharpSamples))
+                pointDictSoft['%s' % names[a]] = _makePoint('%sSoft_%s' % (names[a], num), vecs[a], mtxListSoft[i].output)
+                pointDictSharp['%s' % names[a]] = _makePoint('%sSharp_%s' % (names[a], num), vecs[a], mtxListSharp[i].output)
+            softPoints.append(pointDictSoft)
+            sharpPoints.append(pointDictSharp)
+            localDict = {}
+            localDict['y'] = coreUtils.minus([pointDictSharp['posY'].output, sharpSamples[i].result.position], name='%s_localPointY_%s_utl' % (self.name, num))
+            localDict['x'] = coreUtils.minus([pointDictSharp['posX'].output, sharpSamples[i].result.position], name='%s_localPointX_%s_utl' % (self.name, num))
+            localPoints.append(localDict)
 
         # Calculate weights for soft / sharp blending at each ik ctrl
+        sharpenPosYList = []
+        sharpenNegYList = []
+        sharpenPosXList = []
+        sharpenNegXList = []
         for i in range(len(ikMainCtrls)):
-            num = num = str(i+1).zfill(2)
+            num = str(i+1).zfill(2)
 
-            curvatureVec = coreUtils.minus([softSamples[i].result.curvatureCenter, softSamples[i].result.position], '%s_curvatureVec_%s_utl' % (self.name, num))
+            # Get a normalized vector from the sample point on the sharp curve to its curvature centre
+            samp = softSamples[(i*latticeDivisions)]
+            curvatureVec = coreUtils.minus([samp.result.curvatureCenter, samp.result.position], '%s_curvatureVec_%s_utl' % (self.name, num))
             curvatureCond = pmc.createNode('condition', name='%s_isCurved_%s_utl' % (self.name, num))
-            softSamples[i].curvatureRadius.connect(curvatureCond.firstTerm)
+            samp.curvatureRadius.connect(curvatureCond.firstTerm)
             curvatureCond.colorIfTrue.set((0, 1, 0))
             curvatureVec.output3D.connect(curvatureCond.colorIfFalse)
             curvatureVecNorm = coreUtils.normalizeVector(curvatureCond.outColor, name='%s_curvatureVecNormalized_%s_utl' % (self.name, num))
 
-
-
-        '''
-        # point on curve info nodes for measuring curvature at joints
-        infoNodes = curveUtils.sampleCurve(crv=ikHardCrv, numSamples=numIkCtrls, name='ikCrv')
-
-        # create vectors from info nodes to lattice points and from info nodes to curvature centres
-        latticeVecsY = []
-        latticeVecsX = []
-        for i in range(numIkCtrls):
-            num = str(i+1).zfill(2)
-            pmaY = coreUtils.minus([posYCrvSharp.controlPoints[i*latticeDivisions], infoNodes[i].result.position], name='%s_vecY_%s_utl' % (self.name, num))
-            vpY = coreUtils.normalizeVector(pmaY.output3D, name='%s_vecYNormalized_%s_utl' % (self.name, num))
-
-            pmaX = coreUtils.minus([posXCrvSharp.controlPoints[i*latticeDivisions], infoNodes[i].result.position], name='%s_vecX_%s_utl' % (self.name, num))
-            vpX = coreUtils.normalizeVector(pmaX.output3D, name='%s_vecXNormalized_%s_utl' % (self.name, num))
-
-            pmaC = coreUtils.minus([infoNodes[i].result.curvatureCenter, infoNodes[i].result.position], name='%s_vecX_%s_utl' % (self.name, num))
-            curvatureCond = pmc.createNode('condition', name='%s_isCurved_%s_utl' % (self.name, num))
-            infoNodes[i].curvatureRadius.connect(curvatureCond.firstTerm)
-            curvatureCond.colorIfTrue.set((0, 1, 0))
-            pmaC.output3D.connect(curvatureCond.colorIfFalse)
-            vpC = coreUtils.normalizeVector(curvatureCond.outColor, name='%s_vecYNormalized_%s_utl' % (self.name, num))
-
-            dotY = coreUtils.dot(vpC.output, vpY.output, name='%s_dotY_%s_utl' % (self.name, num))
+            # Get the dot product between the top and bottom points and the curvature vector
+            dotY = coreUtils.dot(curvatureVecNorm.output, localPoints[i*latticeDivisions]['y'].output3D, name='%s_dotY_%s_utl' % (self.name, num))
             dotYRemap = pmc.createNode('remapValue', name='%s_dotYNormalized_%s_utl' % (self.name, num))
             dotY.outputX.connect(dotYRemap.inputValue)
             dotYRemap.inputMin.set(-1)
             dotYRev = coreUtils.reverse(dotYRemap.outValue, name='%s_dotYReversed_%s_utl' % (self.name, num))
 
-            dotX = coreUtils.dot(vpC.output, vpX.output, name='%s_dotX_%s_utl' % (self.name, num))
+            # Get the dot product between the left and right points and the curvature vector
+            dotX = coreUtils.dot(curvatureVecNorm.output, localPoints[i*latticeDivisions]['x'].output3D, name='%s_dotX_%s_utl' % (self.name, num))
             dotXRemap = pmc.createNode('remapValue', name='%s_dotXNormalized_%s_utl' % (self.name, num))
             dotX.outputX.connect(dotXRemap.inputValue)
             dotXRemap.inputMin.set(-1)
             dotXRev = coreUtils.reverse(dotYRemap.outValue, name='%s_dotXReversed_%s_utl' % (self.name, num))
 
-            innerMultY = coreUtils.multiply(dotYRemap.outValue, self.ikCtrls[i].inner_sharpness, name='%s_innerSharpenY_%s_utl' % (self.name, num))
-            outerMultY = coreUtils.multiply(dotYRev.outputX, self.ikCtrls[i].outer_sharpness, name='%s_outerSharpenY_%s_utl' % (self.name, num))
-            sharpenPosY = coreUtils.add([innerMultY.outputX, outerMultY.outputX], name='%s_sharpenPosY_%s_utl' % (self.name, num))
-            sharpenNegY = coreUtils.convert(sharpenPosY.output1D, -1.0, name='%s_sharpenNegY_%s_utl' % (self.name, num))
+            # Multiply dot product results by inner and outer sharpness attribute values
+            innerMultY = coreUtils.multiply(dotYRemap.outValue, ikMainCtrls[i].inner_sharpness, name='%s_innerSharpenY_%s_utl' % (self.name, num))
+            outerMultY = coreUtils.multiply(dotYRev.outputX, ikMainCtrls[i].outer_sharpness, name='%s_outerSharpenY_%s_utl' % (self.name, num))
+            sharpenPosYList.append(coreUtils.add([innerMultY.outputX, outerMultY.outputX], name='%s_sharpenPosY_%s_utl' % (self.name, num)))
+            sharpenNegYList.append(coreUtils.reverse(sharpenPosYList[-1].output1D, name='%s_sharpenNegY_%s_utl' % (self.name, num)))
 
-            innerMultX = coreUtils.multiply(dotXRemap.outValue, self.ikCtrls[i].inner_sharpness, name='%s_innerSharpenX_%s_utl' % (self.name, num))
-            outerMultX = coreUtils.multiply(dotXRev.outputX, self.ikCtrls[i].outer_sharpness, name='%s_outerSharpenX_%s_utl' % (self.name, num))
-            sharpenPosX = coreUtils.add([innerMultX.outputX, outerMultX.outputX], name='%s_sharpenPosX_%s_utl' % (self.name, num))
-            sharpenNegX = coreUtils.convert(sharpenPosX.output1D, -1.0, name='%s_sharpenNegX_%s_utl' % (self.name, num))
+            innerMultX = coreUtils.multiply(dotXRemap.outValue, ikMainCtrls[i].inner_sharpness, name='%s_innerSharpenX_%s_utl' % (self.name, num))
+            outerMultX = coreUtils.multiply(dotXRev.outputX, ikMainCtrls[i].outer_sharpness, name='%s_outerSharpenX_%s_utl' % (self.name, num))
+            sharpenPosXList.append(coreUtils.add([innerMultX.outputX, outerMultX.outputX], name='%s_sharpenPosX_%s_utl' % (self.name, num)))
+            sharpenNegXList.append(coreUtils.reverse(sharpenPosXList[-1].output1D, name='%s_sharpenNegX_%s_utl' % (self.name, num)))
 
-            bcPosY = coreUtils.blend(posYCrvSoft.controlPoints[i], posYCrvSharp.controlPoints[i], name='%s_blendPosY_%s_utl' % (self.name, num), blendAttr=sharpenPosY.output1D)
-            bcPosY.output.connect(posYCrv.controlPoints[i])
+        # For each sample, set up its blending between soft and hard curves
+        pointsPosY = []
+        pointsNegY = []
+        pointsPosX = []
+        pointsNegX = []
 
-            bcNegY = coreUtils.blend(negYCrvSoft.controlPoints[i], negYCrvSharp.controlPoints[i], name='%s_blendNegY_%s_utl' % (self.name, num), blendAttr=sharpenNegY.output)
-            bcNegY.output.connect(negYCrv.controlPoints[i])
+        def _makeBlendPoint(name, outerIndex, innerIndex, posList):
+            index = (outerIndex*latticeDivisions)+innerIndex
 
-            bcPosX = coreUtils.blend(posXCrvSoft.controlPoints[i], posXCrvSharp.controlPoints[i], name='%s_blendPosX_%s_utl' % (self.name, num), blendAttr=sharpenPosX.output1D)
-            bcPosX.output.connect(posXCrv.controlPoints[i])
+            weightBc = pmc.createNode('blendTwoAttr', name='%s_%sWeightBlend_%s_utl' % (self.name, name, index))
+            if 'pos' in name:
+                posList[outerIndex].output1D.connect(weightBc.input[0])
+                posList[outerIndex+1].output1D.connect(weightBc.input[1])
+            else:
+                posList[outerIndex].outputX.connect(weightBc.input[0])
+                posList[outerIndex+1].outputX.connect(weightBc.input[1])
+            weightBc.attributesBlender.set((1.0 / (latticeDivisions)*a))
 
-            bcNegX = coreUtils.blend(negXCrvSoft.controlPoints[i], negXCrvSharp.controlPoints[i], name='%s_blendNegX_%s_utl' % (self.name, num), blendAttr=sharpenNegX.output)
-            bcNegX.output.connect(negXCrv.controlPoints[i])
-        '''
+            pointBc = coreUtils.blend(sharpPoints[index][name].output, softPoints[index][name].output, name='%s_%sPointBlend_%s_utl' % (self.name, name, index), blendAttr=weightBc.output)
+            return pointBc
+
+        for i in range(len(ikMainCtrls)-1):
+            for a in range(latticeDivisions):
+                pointsPosY.append(_makeBlendPoint('posY', i, a, sharpenPosYList))
+                pointsNegY.append(_makeBlendPoint('negY', i, a, sharpenNegYList))
+                pointsPosX.append(_makeBlendPoint('posX', i, a, sharpenPosXList))
+                pointsNegX.append(_makeBlendPoint('negX', i, a, sharpenNegXList))
+
+        num = str(len(pointsPosY)).zfill(2)
+        pointsPosY.append(coreUtils.blend(sharpPoints[-1]['posY'].output, softPoints[-1]['posY'].output, name='%s_posYPointBlend_%s_utl' % (self.name, num)))
+        pointsNegY.append(coreUtils.blend(sharpPoints[-1]['negY'].output, softPoints[-1]['negY'].output, name='%s_negYPointBlend_%s_utl' % (self.name, num)))
+        pointsPosX.append(coreUtils.blend(sharpPoints[-1]['posX'].output, softPoints[-1]['posX'].output, name='%s_posXPointBlend_%s_utl' % (self.name, num)))
+        pointsNegX.append(coreUtils.blend(sharpPoints[-1]['negX'].output, softPoints[-1]['negX'].output, name='%s_negXPointBlend_%s_utl' % (self.name, num)))
 
 
+        # Make linear curves that will drive the lattice
+        posYCrv = curveUtils.curveBetweenNodes(start, end, numCVs=len(pointsPosY), name='%s_posYWire_crv' % self.name, degree=1)
+        negYCrv = curveUtils.curveBetweenNodes(start, end, numCVs=len(pointsPosY), name='%s_negYWire_crv' % self.name, degree=1)
+        posXCrv = curveUtils.curveBetweenNodes(start, end, numCVs=len(pointsPosY), name='%s_posXWire_crv' % self.name, degree=1)
+        negXCrv = curveUtils.curveBetweenNodes(start, end, numCVs=len(pointsPosY), name='%s_negXWire_crv' % self.name, degree=1)
 
+        for i in range(len(pointsPosY)):
+            pointsPosY[i].output.connect(posYCrv.controlPoints[i])
+            pointsNegY[i].output.connect(negYCrv.controlPoints[i])
+            pointsPosX[i].output.connect(posXCrv.controlPoints[i])
+            pointsNegX[i].output.connect(negXCrv.controlPoints[i])
 
     def cleanUp(self):
         pass
