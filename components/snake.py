@@ -10,6 +10,8 @@ import pymel.core as pmc
 import drRigging.utils.componentUtils as componentUtils
 reload(componentUtils)
 
+import math
+
 class DrSnake(drBase.DrBaseComponent):
     '''
 
@@ -36,10 +38,12 @@ class DrSnake(drBase.DrBaseComponent):
         self.ctrls.append(baseCtrl)
 
         points = coreUtils.pointsAlongVector(start, end, divisions=numIkCtrls-1)
+        points.insert(1, coreUtils.pointsAlongVector(points[0], points[1], 2)[1])
+        points.insert(numIkCtrls, coreUtils.pointsAlongVector(points[-2], points[-1], 2)[1])
 
         # ik ctrls
         ikCtrls=[]
-        for i in range(numIkCtrls):
+        for i in range(len(points)):
             num = str(i+1).zfill(2)
 
             c = controls.ballCtrl(radius=ctrlSize*.5, name='%s_ik_%s_ctrl' % (self.name, num))
@@ -47,20 +51,26 @@ class DrSnake(drBase.DrBaseComponent):
             b.setParent(self.interfaceGrp)
             b.t.set(points[i])
             ikCtrls.append(c)
+        ikCtrls[1].getParent().setParent(ikCtrls[0])
+        ikCtrls[-2].getParent().setParent(ikCtrls[-1])
 
         # tangent vectors
         tangentVecs = []
-        for i in range(numIkCtrls-1):
+        for i in range(len(ikCtrls)-1):
             num = str(i+1).zfill(2)
             vec = coreUtils.vectorBetweenNodes(ikCtrls[i], ikCtrls[i+1], name='%s_tangentVec_%s_utl' % (self.name, num))
             vecNorm = coreUtils.normalizeVector(vec.output3D, name='%s_tangentVecNorm_%s_utl' % (self.name, num))
             tangentVecs.append(vecNorm)
 
+        tangentVecs.append(coreUtils.matrixAxisToVector(ikCtrls[-1], name='%s_tangentVec_%s_utl' % (self.name, str(len(points)).zfill(2))))
+
         # blended tangent vectors
         blendedtangentVecs = []
-        jointPoints = []
-        for i in range(1, numIkCtrls-1):
-            num = str(i).zfill(2)
+        jointMtxList = []
+
+        for i in range(1, len(ikCtrls)-1):
+            num = str(i+1).zfill(2)
+            d = coreUtils.isDecomposed(ikCtrls[i])
             bc = coreUtils.blend(tangentVecs[i-1].output, tangentVecs[i].output, name='%s_blendedTangentVec_%s_utl' % (self.name, num))
             bc.blender.set(0.5)
             blendedtangentVecs.append(bc)
@@ -70,23 +80,6 @@ class DrSnake(drBase.DrBaseComponent):
             refVec = coreUtils.matrixAxisToVector(ikCtrls[i], name='%s_referenceVec_%s_utl' % (self.name, num))
             upVec = coreUtils.cross(bc.output, refVec.output, name='%s_upVec_%s_utl' % (self.name, num))
             sideVec = coreUtils.cross(upVec.output, bc.output, name='%s_sideVec_%s_utl' % (self.name, num))
-
-            sideVec.outputX.connect(mtx.in00)
-            sideVec.outputY.connect(mtx.in01)
-            sideVec.outputZ.connect(mtx.in02)
-
-            upVec.outputX.connect(mtx.in10)
-            upVec.outputY.connect(mtx.in11)
-            upVec.outputZ.connect(mtx.in12)
-
-            bc.outputR.connect(mtx.in20)
-            bc.outputG.connect(mtx.in21)
-            bc.outputB.connect(mtx.in22)
-
-            d = coreUtils.isDecomposed(ikCtrls[i])
-            d.outputTranslateX.connect(mtx.in30)
-            d.outputTranslateY.connect(mtx.in31)
-            d.outputTranslateZ.connect(mtx.in32)
 
             # Joint bend - radius/(dot(blendedTangent, tangent))
             dot = coreUtils.dot(tangentVecs[i].output, bc.output, name='%s_jointBend_%s_utl' % (self.name, num))
@@ -104,28 +97,82 @@ class DrSnake(drBase.DrBaseComponent):
             blendAbs[0].input2Y.set(2)
             blendAbs[1].input2Y.set(0.5)
             sideBendBlend = coreUtils.blend(md.outputX, md.input1X, name='%s_sideBlend_%s_utl' % (self.name, num), blendAttr=blendAbs[1].outputX)
+            sideVecScaled = pmc.createNode('multiplyDivide', name='%s_sideVecScaled_%s_utl' % (self.name, num))
+            sideVec.output.connect(sideVecScaled.input1)
+            coreUtils.connectAttrToMany(sideBendBlend.outputR, [sideVecScaled.input2X, sideVecScaled.input2Y, sideVecScaled.input2Z])
             upBendBlend = coreUtils.blend(md.outputX, md.input1X, name='%s_upBlend_%s_utl' % (self.name, num), blendAttr=blendAbs[1].outputY)
-            upBendNeg = coreUtils.convert(upBendBlend.outputR, -1, name='%s_upBendNeg_%s_utl' % (self.name, num))
-            sideBendNeg = coreUtils.convert(sideBendBlend.outputR, -1, name='%s_sideBendNeg_%s_utl' % (self.name, num))
+            upVecScaled = pmc.createNode('multiplyDivide', name='%s_upVecScaled_%s_utl' % (self.name, num))
+            upVec.output.connect(upVecScaled.input1)
+            coreUtils.connectAttrToMany(upBendBlend.outputR, [upVecScaled.input2X, upVecScaled.input2Y, upVecScaled.input2Z])
 
-            pointDict = {}
+            sideVecScaled.outputX.connect(mtx.in00)
+            sideVecScaled.outputY.connect(mtx.in01)
+            sideVecScaled.outputZ.connect(mtx.in02)
 
-            pointDict['posY'] = coreUtils.pointMatrixMult((0, 0, 0), mtx.output, name='%s_posY_%s_utl' % (self.name, num))
-            upBendBlend.outputR.connect(pointDict['posY'].input1Y)
-            s = pmc.polySphere(radius=0.1)[0]
-            pointDict['posY'].output.connect(s.t)
+            upVecScaled.outputX.connect(mtx.in10)
+            upVecScaled.outputY.connect(mtx.in11)
+            upVecScaled.outputZ.connect(mtx.in12)
 
-            pointDict['negY'] = coreUtils.pointMatrixMult((0, 0, 0), mtx.output, name='%s_negY_%s_utl' % (self.name, num))
-            upBendNeg.output.connect(pointDict['negY'].input1Y)
+            bc.outputR.connect(mtx.in20)
+            bc.outputG.connect(mtx.in21)
+            bc.outputB.connect(mtx.in22)
 
-            pointDict['posX'] = coreUtils.pointMatrixMult((0, 0, 0), mtx.output, name='%s_posX_%s_utl' % (self.name, num))
-            sideBendBlend.outputR.connect(pointDict['posX'].input1X)
+            d.outputTranslateX.connect(mtx.in30)
+            d.outputTranslateY.connect(mtx.in31)
+            d.outputTranslateZ.connect(mtx.in32)
 
-            pointDict['negX'] = coreUtils.pointMatrixMult((0, 0, 0), mtx.output, name='%s_negX_%s_utl' % (self.name, num))
-            sideBendNeg.output.connect(pointDict['negX'].input1X)
+            jointMtxList.append(mtx)
+
+        posYPointsSharp = []
+        negYPointsSharp = []
+        posXPointsSharp = []
+        negXPointsSharp = []
+
+        posYPointsSharp.append(coreUtils.pointMatrixMult((0, 1, 0), ikCtrls[0].worldMatrix[0], name='%s_posY_sharpPoint_%s_utl' % (self.name, num)))
+        negYPointsSharp.append(coreUtils.pointMatrixMult((0, -1, 0), ikCtrls[0].worldMatrix[0], name='%s_negY_sharpPoint_%s_utl' % (self.name, num)))
+        posXPointsSharp.append(coreUtils.pointMatrixMult((1, 0, 0), ikCtrls[0].worldMatrix[0], name='%s_posX_sharpPoint_%s_utl' % (self.name, num)))
+        negXPointsSharp.append(coreUtils.pointMatrixMult((-1, 0, 0), ikCtrls[0].worldMatrix[0], name='%s_negX_sharpPoint_%s_utl' % (self.name, num)))
+
+        for i in range(len(jointMtxList)-1):
+            divs = latticeDivisions*2
+            exceptionList = [0, 1, len(jointMtxList)-2, len(jointMtxList)-3]
+            if i in exceptionList:
+                divs = latticeDivisions
+            for a in range(divs):
+                num = str((i*divs)+a).zfill(2)
+                blendVal = (1.0 / (divs))*a
+
+                mtxBlend = coreUtils.blendMatrices(jointMtxList[i].output, jointMtxList[i+1].output, 1-blendVal, blendVal, name='%s_mtxBlend_%s_utl' % (self.name, num))
+
+                posYPointsSharp.append(coreUtils.pointMatrixMult((0, 1, 0), mtxBlend.matrixSum, name='%s_posY_sharpPoint_%s_utl' % (self.name, num)))
+                negYPointsSharp.append(coreUtils.pointMatrixMult((0, -1, 0), mtxBlend.matrixSum, name='%s_negY_sharpPoint_%s_utl' % (self.name, num)))
+                posXPointsSharp.append(coreUtils.pointMatrixMult((1, 0, 0), mtxBlend.matrixSum, name='%s_posX_sharpPoint_%s_utl' % (self.name, num)))
+                negXPointsSharp.append(coreUtils.pointMatrixMult((-1, 0, 0), mtxBlend.matrixSum, name='%s_negX_sharpPoint_%s_utl' % (self.name, num)))
+
+        posYPointsSharp.append(coreUtils.pointMatrixMult((0, 1, 0), ikCtrls[-1].worldMatrix[0], name='%s_posY_sharpPoint_%s_utl' % (self.name, num)))
+        negYPointsSharp.append(coreUtils.pointMatrixMult((0, -1, 0), ikCtrls[-1].worldMatrix[0], name='%s_negY_sharpPoint_%s_utl' % (self.name, num)))
+        posXPointsSharp.append(coreUtils.pointMatrixMult((1, 0, 0), ikCtrls[-1].worldMatrix[0], name='%s_posX_sharpPoint_%s_utl' % (self.name, num)))
+        negXPointsSharp.append(coreUtils.pointMatrixMult((-1, 0, 0), ikCtrls[-1].worldMatrix[0], name='%s_negX_sharpPoint_%s_utl' % (self.name, num)))
+
+        # create lattice
+        latticeScale = math.sqrt(1*2)
+        pmc.select([])
+        lattice = pmc.lattice(dv=(2, 2, len(posYPointsSharp)), scale=(1, 1, 1))
+        lattice[0].rename('%s_lattice_def' % self.name)
+        lattice[1].rename('%s_lattice_cage' % self.name)
+        lattice[2].rename('%s_lattice_base' % self.name)
+        lattice[2].rz.set(45)
+        lattice[2].s.set((latticeScale, latticeScale, coreUtils.getDistance(start, end)))
+
+        for i in range(len(posYPointsSharp)):
+            posYPointsSharp[i].output.connect(lattice[1].controlPoints[(i*4)+3])
+            negYPointsSharp[i].output.connect(lattice[1].controlPoints[i*4])
+            posXPointsSharp[i].output.connect(lattice[1].controlPoints[(i*4)+1])
+            negXPointsSharp[i].output.connect(lattice[1].controlPoints[(i*4)+2])
 
 
-            jointPoints.append(pointDict)
+
+
 
 
 
