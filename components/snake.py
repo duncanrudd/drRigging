@@ -103,14 +103,15 @@ class DrSnake(drBase.DrBaseComponent):
             d = coreUtils.isDecomposed(ikCtrls[i])
             bc = coreUtils.blend(tangentVecs[i-1].output, tangentVecs[i].output, name='%s_blendedTangentVec_%s_utl' % (self.name, num))
             bc.blender.set(0.5)
-            blendedtangentVecs.append(bc)
+            blendedTangentVecNorm = coreUtils.normalizeVector(bc.output, name='%s_blendedTangentVecNorm_%s_utl' % (self.name, num))
+            blendedtangentVecs.append(blendedTangentVecNorm)
 
             # Joint Matrix
             mtx = pmc.createNode('fourByFourMatrix', name='%s_jointMtx_%s_utl' % (self.name, num))
             refVec = coreUtils.matrixAxisToVector(ikCtrls[i], name='%s_referenceVec_%s_utl' % (self.name, num))
             upVec = coreUtils.cross(bc.output, refVec.output, name='%s_upVec_%s_utl' % (self.name, num))
             upVecs.append(upVec)
-            sideVec = coreUtils.cross(upVec.output, bc.output, name='%s_sideVec_%s_utl' % (self.name, num))
+            sideVec = coreUtils.cross(upVec.output, blendedTangentVecNorm.output, name='%s_sideVec_%s_utl' % (self.name, num))
             sideVecs.append(sideVec)
 
             sideVec.outputX.connect(mtx.in00)
@@ -121,9 +122,9 @@ class DrSnake(drBase.DrBaseComponent):
             upVec.outputY.connect(mtx.in11)
             upVec.outputZ.connect(mtx.in12)
 
-            bc.outputR.connect(mtx.in20)
-            bc.outputG.connect(mtx.in21)
-            bc.outputB.connect(mtx.in22)
+            blendedTangentVecNorm.outputX.connect(mtx.in20)
+            blendedTangentVecNorm.outputY.connect(mtx.in21)
+            blendedTangentVecNorm.outputZ.connect(mtx.in22)
 
             d.outputTranslateX.connect(mtx.in30)
             d.outputTranslateY.connect(mtx.in31)
@@ -132,10 +133,10 @@ class DrSnake(drBase.DrBaseComponent):
             jointMtxList.append(mtx)
 
             # Joint bend - radius/(dot(blendedTangent, tangent))
-            dot = coreUtils.dot(tangentVecs[i].output, bc.output, name='%s_jointBend_%s_utl' % (self.name, num))
+            dot = coreUtils.dot(tangentVecs[i].output, blendedTangentVecNorm.output, name='%s_jointBend_%s_utl' % (self.name, num))
             dotAbs = coreUtils.forceAbsolute(dot.outputX, name='%s_bendAbsolute_%s_utl' % (self.name, num))
             md = coreUtils.divide(radius, dotAbs[1].outputX, name='%s_jointRadius_%s_utl' % (self.name, num))
-            localJointVec = coreUtils.minus([bc.output, d.outputTranslate], name='%s_blendedTangentVecToLocalSrt_%s_utl' % (self.name, num))
+            localJointVec = coreUtils.minus([blendedTangentVecNorm.output, d.outputTranslate], name='%s_blendedTangentVecToLocalSrt_%s_utl' % (self.name, num))
             vp = pmc.createNode('vectorProduct', name='%s_blendedTangentLocalNorm_%s_utl' % (self.name, num))
             vp.operation.set(0)
             vp.normalizeOutput.set(1)
@@ -177,62 +178,48 @@ class DrSnake(drBase.DrBaseComponent):
             exceptionList = [0, 1, len(ikCtrls)-2, len(ikCtrls)-3]
             if i in exceptionList:
                 divs = latticeDivisions
+            inverseMtx = None
             for a in range(divs):
                 num = str((i*divs)+a+1).zfill(2)
                 blendVal = (1.0 / (divs))*a
 
-                scaleVal = coreUtils.blend(ikCtrls[i+1].bendX, ikCtrls[i].bendX, name='%s_pointScaleBlend_%s_utl' % (self.name, num))
-                ikCtrls[i+1].bendY.connect(scaleVal.color1G)
-                ikCtrls[i].bendY.connect(scaleVal.color2G)
-                scaleVal.blender.set(blendVal)
+                mtxBlend = None
+                segMtx = None
+                if i==0:
+                    mtxBlend = coreUtils.blendMatrices(ikCtrls[0].worldMatrix[0], jointMtxList[i].output, 1-blendVal, blendVal, name='%s_mtxBlend_%s_utl' % (self.name, num))
+                    segMtx = ikCtrls[0].worldMatrix[0]
+                elif i == len(ikCtrls)-1:
+                    mtxBlend = coreUtils.blendMatrices(jointMtxList[i-1].output, ikCtrls[-1].worldMatrix[0], 1-blendVal, blendVal, name='%s_mtxBlend_%s_utl' % (self.name, num))
+                    segMtx = jointMtxList[i-1]
+                else:
+                    mtxBlend = coreUtils.blendMatrices(jointMtxList[i-1].output, jointMtxList[i].output, 1-blendVal, blendVal, name='%s_mtxBlend_%s_utl' % (self.name, num))
+                    segMtx = jointMtxList[i-1].output
+                if a==0:
+                    inverseMtx = pmc.createNode('inverseMatrix', name='%s_segInverseMtx_%s_utl' % (self.name, num))
+                    segMtx.connect(inverseMtx.inputMatrix)
+                    print inverseMtx
 
-                d1 = coreUtils.isDecomposed(ikCtrls[i])
-                d2 = coreUtils.isDecomposed(ikCtrls[i+1])
+                localMtx = coreUtils.multiplyMatrices([mtxBlend.matrixSum, inverseMtx.outputMatrix], '%s_pointLocalMtx_%s_utl' % (self.name, num))
+                yVec = coreUtils.matrixAxisToVector(localMtx.matrixSum, name='%s_pointYVec_%s_utl' % (self.name, num), axis='y')
+                scaleY = coreUtils.divide(1.0, yVec.outputY, name='%s_pointScaleY_%s_utl' % (self.name, num))
 
-                posBlend = coreUtils.blend(d2.outputTranslate, d1.outputTranslate, name='%s_pointPositionBlend_%s_utl' % (self.name, num))
-                posBlend.blender.set(blendVal)
+                xVec = coreUtils.matrixAxisToVector(localMtx.matrixSum, name='%s_pointXVec_%s_utl' % (self.name, num), axis='x')
+                scaleX = coreUtils.divide(1.0, xVec.outputX, name='%s_pointScaleX_%s_utl' % (self.name, num))
 
-                tangentVec = coreUtils.blend(blendedtangentVecs[i+1].output, blendedtangentVecs[i].output, name='%s_pointTangentVec_%s_utl' % (self.name, num))
-                tangentVec.blender.set(blendVal)
-                tangentVecNorm = coreUtils.normalizeVector(tangentVec.output, name='%s_pointTangentVecNorm_%s_utl' % (self.name, num))
+                d = coreUtils.decomposeMatrix(mtxBlend.matrixSum, name='%s_pointMtxToSrt_%s_utl' % (self.name, num))
 
-                upVec = coreUtils.blend(upVecs[i+1].output, upVecs[i].output, name='%s_pointUpVec_%s_utl' % (self.name, num))
-                upVec.blender.set(blendVal)
-                upVecNorm = coreUtils.normalizeVector(upVec.output, name='%s_pointUpVecNorm_%s_utl' % (self.name, num))
-                upVecScaled = pmc.createNode('multiplyDivide', name='%s_upVecScaled_%s_utl' % (self.name, num))
-                upVecNorm.output.connect(upVecScaled.input1)
-                coreUtils.connectAttrToMany(scaleVal.outputG, [upVecScaled.input2X, upVecScaled.input2Y, upVecScaled.input2Z])
-
-                sideVec = coreUtils.blend(sideVecs[i+1].output, sideVecs[i].output, name='%s_pointSideVec_%s_utl' % (self.name, num))
-                sideVec.blender.set(blendVal)
-                sideVecNorm = coreUtils.normalizeVector(sideVec.output, name='%s_pointSideVecNorm_%s_utl' % (self.name, num))
-                sideVecScaled = pmc.createNode('multiplyDivide', name='%s_sideVecScaled_%s_utl' % (self.name, num))
-                sideVecNorm.output.connect(sideVecScaled.input1)
-                coreUtils.connectAttrToMany(scaleVal.outputR, [sideVecScaled.input2X, sideVecScaled.input2Y, sideVecScaled.input2Z])
-
-                mtx = pmc.createNode('fourByFourMatrix', name='%s_pointMtx_%s_utl' % (self.name, num))
-                sideVecScaled.outputX.connect(mtx.in00)
-                sideVecScaled.outputY.connect(mtx.in01)
-                sideVecScaled.outputZ.connect(mtx.in02)
-
-                upVecScaled.outputX.connect(mtx.in10)
-                upVecScaled.outputY.connect(mtx.in11)
-                upVecScaled.outputZ.connect(mtx.in12)
-
-                tangentVecNorm.outputX.connect(mtx.in20)
-                tangentVecNorm.outputY.connect(mtx.in21)
-                tangentVecNorm.outputZ.connect(mtx.in22)
-
-                posBlend.outputR.connect(mtx.in30)
-                posBlend.outputG.connect(mtx.in31)
-                posBlend.outputB.connect(mtx.in32)
+                mtx = pmc.createNode('composeMatrix', name='%s_pointMtx_%s_utl' % (self.name, num))
+                d.outputTranslate.connect(mtx.inputTranslate)
+                d.outputRotate.connect(mtx.inputRotate)
+                mtx.inputScaleX.set(1.0)
+                scaleY.outputX.connect(mtx.inputScaleY)
+                scaleX.outputX.connect(mtx.inputScaleX)
 
                 loc = pmc.spaceLocator()
-                d = pmc.createNode('decomposeMatrix')
-                mtx.output.connect(d.inputMatrix)
                 d.outputTranslate.connect(loc.t)
                 d.outputRotate.connect(loc.r)
-                d.outputScale.connect(loc.s)
+                scaleY.outputX.connect(loc.sy)
+                scaleX.outputX.connect(loc.sx)
 
 
 
