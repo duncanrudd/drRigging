@@ -64,162 +64,70 @@ class DrSnake(drBase.DrBaseComponent):
 
         tangentVecs.append(coreUtils.matrixAxisToVector(ikCtrls[-1], name='%s_tangentVec_%s_utl' % (self.name, str(len(points)).zfill(2))))
 
-        # blended tangent vectors
-        blendedtangentVecs = []
-        upVecs = []
-        sideVecs = []
-        jointMtxList = []
-
-        pmc.addAttr(ikCtrls[0], ln='bendScale', at='double', k=0, h=0)
-        pmc.setAttr(ikCtrls[0].bendScale, cb=1)
-        ikCtrls[0].bendScale.set(1.0)
-
-        pmc.addAttr(ikCtrls[0], ln='bendX', at='double', k=0, h=0)
-        pmc.setAttr(ikCtrls[0].bendX, cb=1)
-        ikCtrls[0].bendX.set(1.0)
-
-        pmc.addAttr(ikCtrls[0], ln='bendY', at='double', k=0, h=0)
-        pmc.setAttr(ikCtrls[0].bendY, cb=1)
-        ikCtrls[0].bendY.set(1.0)
-
-        pmc.addAttr(ikCtrls[-1], ln='bendScale', at='double', k=0, h=0)
-        pmc.setAttr(ikCtrls[-1].bendScale, cb=1)
-        ikCtrls[-1].bendScale.set(1.0)
-
-        pmc.addAttr(ikCtrls[-1], ln='bendX', at='double', k=0, h=0)
-        pmc.setAttr(ikCtrls[-1].bendX, cb=1)
-        ikCtrls[-1].bendX.set(1.0)
-
-        pmc.addAttr(ikCtrls[-1], ln='bendY', at='double', k=0, h=0)
-        pmc.setAttr(ikCtrls[-1].bendY, cb=1)
-        ikCtrls[-1].bendY.set(1.0)
-
-        blendedtangentVecs.append(tangentVecs[0])
-        upVecs.append(coreUtils.matrixAxisToVector(ikCtrls[0], name='%s_upVec_01_utl' % self.name, axis='y'))
-        sideVecs.append(coreUtils.matrixAxisToVector(ikCtrls[0], name='%s_sideVec_01_utl' % self.name, axis='x'))
-
-        for i in range(1, len(ikCtrls)-1):
-            num = str(i+1).zfill(2)
-            d = coreUtils.isDecomposed(ikCtrls[i])
-            bc = coreUtils.blend(tangentVecs[i-1].output, tangentVecs[i].output, name='%s_blendedTangentVec_%s_utl' % (self.name, num))
-            bc.blender.set(0.5)
-            blendedTangentVecNorm = coreUtils.normalizeVector(bc.output, name='%s_blendedTangentVecNorm_%s_utl' % (self.name, num))
-            blendedtangentVecs.append(blendedTangentVecNorm)
-
-            # Joint Matrix
-            mtx = pmc.createNode('fourByFourMatrix', name='%s_jointMtx_%s_utl' % (self.name, num))
-            refVec = coreUtils.matrixAxisToVector(ikCtrls[i], name='%s_referenceVec_%s_utl' % (self.name, num))
-            upVec = coreUtils.cross(bc.output, refVec.output, name='%s_upVec_%s_utl' % (self.name, num))
-            upVecs.append(upVec)
-            sideVec = coreUtils.cross(upVec.output, blendedTangentVecNorm.output, name='%s_sideVec_%s_utl' % (self.name, num))
-            sideVecs.append(sideVec)
-
-            sideVec.outputX.connect(mtx.in00)
-            sideVec.outputY.connect(mtx.in01)
-            sideVec.outputZ.connect(mtx.in02)
-
-            upVec.outputX.connect(mtx.in10)
-            upVec.outputY.connect(mtx.in11)
-            upVec.outputZ.connect(mtx.in12)
-
-            blendedTangentVecNorm.outputX.connect(mtx.in20)
-            blendedTangentVecNorm.outputY.connect(mtx.in21)
-            blendedTangentVecNorm.outputZ.connect(mtx.in22)
-
-            d.outputTranslateX.connect(mtx.in30)
-            d.outputTranslateY.connect(mtx.in31)
-            d.outputTranslateZ.connect(mtx.in32)
-
-            jointMtxList.append(mtx)
-
-            # Joint bend - radius/(dot(blendedTangent, tangent))
-            dot = coreUtils.dot(tangentVecs[i].output, blendedTangentVecNorm.output, name='%s_jointBend_%s_utl' % (self.name, num))
-            dotAbs = coreUtils.forceAbsolute(dot.outputX, name='%s_bendAbsolute_%s_utl' % (self.name, num))
-            md = coreUtils.divide(radius, dotAbs[1].outputX, name='%s_jointRadius_%s_utl' % (self.name, num))
-            localJointVec = coreUtils.minus([blendedTangentVecNorm.output, d.outputTranslate], name='%s_blendedTangentVecToLocalSrt_%s_utl' % (self.name, num))
-            vp = pmc.createNode('vectorProduct', name='%s_blendedTangentLocalNorm_%s_utl' % (self.name, num))
-            vp.operation.set(0)
-            vp.normalizeOutput.set(1)
-            localJointVec.output3Dx.connect(vp.input1X)
-            localJointVec.output3Dy.connect(vp.input1Y)
-            vp.input1Z.set(0.001)
-
-            # Joint scale in X and Y
-            sideVecNorm = pmc.createNode('vectorProduct', name='%s_sideVecNorm_%s_utl' % (self.name, num))
-            sideVecNorm.operation.set(0)
-            sideVecNorm.normalizeOutput.set(1)
-            sideVec.outputX.connect(sideVecNorm.input1X)
-            sideVec.outputY.connect(sideVecNorm.input1Y)
-            sideVecNorm.input1Z.set(0.001)
-            dotX = coreUtils.dot(vp.output, sideVecNorm.output, name='%s_jointDotX_%s_utl' % (self.name, num))
-            dotXAbs = coreUtils.forceAbsolute(dotX.outputX, name='%s_jointDotXAbsolute_%s_utl' % (self.name, num))
-            scaleX = coreUtils.blend(md.outputX, 1.0, name='%s_jointScaleX_%s_utl' % (self.name, num), blendAttr=dotXAbs[1].outputX)
-            scaleY = coreUtils.blend(1.0, md.outputX, name='%s_jointScaleY_%s_utl' % (self.name, num), blendAttr=dotXAbs[1].outputX)
-
-            pmc.addAttr(ikCtrls[i], ln='bendScale', at='double', k=0, h=0)
-            pmc.setAttr(ikCtrls[i].bendScale, cb=1)
-            md.outputX.connect(ikCtrls[i].bendScale)
-
-            pmc.addAttr(ikCtrls[i], ln='bendX', at='double', k=0, h=0)
-            pmc.setAttr(ikCtrls[i].bendX, cb=1)
-            scaleX.outputR.connect(ikCtrls[i].bendX)
-
-            pmc.addAttr(ikCtrls[i], ln='bendY', at='double', k=0, h=0)
-            pmc.setAttr(ikCtrls[i].bendY, cb=1)
-            scaleY.outputR.connect(ikCtrls[i].bendY)
-
-        blendedtangentVecs.append(tangentVecs[-1])
-        upVecs.append(coreUtils.matrixAxisToVector(ikCtrls[-1], name='%s_upVec_%s_utl' % (self.name, str(len(ikCtrls)).zfill(2)), axis='y'))
-        sideVecs.append(coreUtils.matrixAxisToVector(ikCtrls[-1], name='%s_sideVec_%s_utl' % (self.name, str(len(ikCtrls)).zfill(2)), axis='x'))
-
         # create sharp matrices at each lattice division
         for i in range(len(ikCtrls)-1):
+            num = str(i+1).zfill(2)
             divs = latticeDivisions*2
             exceptionList = [0, 1, len(ikCtrls)-2, len(ikCtrls)-3]
             if i in exceptionList:
                 divs = latticeDivisions
-            inverseMtx = None
+            segMtx = pmc.createNode('fourByFourMatrix', name='%s_segMtx_%s_utl' % (self.name, num))
+
+            refVec = coreUtils.matrixAxisToVector(ikCtrls[i], name='%s_referenceVec_%s_utl' % (self.name, num), axis='x')
+            upVec = coreUtils.cross(tangentVecs[i].output, refVec.output, name='%s_upVec_%s_utl' % (self.name, num))
+            sideVec = coreUtils.cross(upVec.output, tangentVecs[i].output, name='%s_sideVec_%s_utl' % (self.name, num))
+
+            sideVec.outputX.connect(segMtx.in00)
+            sideVec.outputY.connect(segMtx.in01)
+            sideVec.outputZ.connect(segMtx.in02)
+
+            upVec.outputX.connect(segMtx.in10)
+            upVec.outputY.connect(segMtx.in11)
+            upVec.outputZ.connect(segMtx.in12)
+
+            tangentVecs[i].outputX.connect(segMtx.in20)
+            tangentVecs[i].outputY.connect(segMtx.in21)
+            tangentVecs[i].outputZ.connect(segMtx.in22)
+
+            d = coreUtils.decomposeMatrix(ikCtrls[i].worldMatrix[0], name='%s_segMtxToSrt_%s_utl' % (self.name, num))
+            d.outputTranslateX.connect(segMtx.in30)
+            d.outputTranslateY.connect(segMtx.in31)
+            d.outputTranslateZ.connect(segMtx.in32)
+
+            dist = coreUtils.distanceBetweenNodes(ikCtrls[i], ikCtrls[i+1], name='%s_segLength_%s_utl' % (self.name, num))
+
             for a in range(divs):
                 num = str((i*divs)+a+1).zfill(2)
                 blendVal = (1.0 / (divs))*a
 
-                mtxBlend = None
-                segMtx = None
-                if i==0:
-                    mtxBlend = coreUtils.blendMatrices(ikCtrls[0].worldMatrix[0], jointMtxList[i].output, 1-blendVal, blendVal, name='%s_mtxBlend_%s_utl' % (self.name, num))
-                    segMtx = ikCtrls[0].worldMatrix[0]
-                elif i == len(ikCtrls)-1:
-                    mtxBlend = coreUtils.blendMatrices(jointMtxList[i-1].output, ikCtrls[-1].worldMatrix[0], 1-blendVal, blendVal, name='%s_mtxBlend_%s_utl' % (self.name, num))
-                    segMtx = jointMtxList[i-1]
-                else:
-                    mtxBlend = coreUtils.blendMatrices(jointMtxList[i-1].output, jointMtxList[i].output, 1-blendVal, blendVal, name='%s_mtxBlend_%s_utl' % (self.name, num))
-                    segMtx = jointMtxList[i-1].output
-                if a==0:
-                    inverseMtx = pmc.createNode('inverseMatrix', name='%s_segInverseMtx_%s_utl' % (self.name, num))
-                    segMtx.connect(inverseMtx.inputMatrix)
-                    print inverseMtx
+                grp = pmc.group(empty=1, name='%s_pointBase_%s_srt' % (self.name, num))
+                grp.setParent(self.rigGrp)
 
-                localMtx = coreUtils.multiplyMatrices([mtxBlend.matrixSum, inverseMtx.outputMatrix], '%s_pointLocalMtx_%s_utl' % (self.name, num))
+                # Create matrix for base group
+                '''
                 yVec = coreUtils.matrixAxisToVector(localMtx.matrixSum, name='%s_pointYVec_%s_utl' % (self.name, num), axis='y')
                 scaleY = coreUtils.divide(1.0, yVec.outputY, name='%s_pointScaleY_%s_utl' % (self.name, num))
 
                 xVec = coreUtils.matrixAxisToVector(localMtx.matrixSum, name='%s_pointXVec_%s_utl' % (self.name, num), axis='x')
                 scaleX = coreUtils.divide(1.0, xVec.outputX, name='%s_pointScaleX_%s_utl' % (self.name, num))
+                '''
 
-                d = coreUtils.decomposeMatrix(mtxBlend.matrixSum, name='%s_pointMtxToSrt_%s_utl' % (self.name, num))
+                mtx = None
+                d = None
+                if a == 0:
+                    mtx = segMtx
+                    d = coreUtils.decomposeMatrix(mtx.output, name='%s_pointMtxToSrt_%s_utl' % (self.name, num))
+                else:
+                    pointLocalOffset = coreUtils.convert(dist.distance, blendVal, name='%s_pointSegOffset_%s_utl' % (self.name, num))
+                    localMtx = pmc.createNode('fourByFourMatrix', name='%s_pointLocalMtx_%s_utl' % (self.name, num))
+                    pointLocalOffset.output.connect(localMtx.in32)
+                    mtx = coreUtils.multiplyMatrices([localMtx.output, segMtx.output], name='%s_pointMtx_%s_utl' % (self.name, num))
+                    d = coreUtils.decomposeMatrix(mtx.matrixSum, '%s_pointMtxToSrt_%s_utl' % (self.name, num))
 
-                mtx = pmc.createNode('composeMatrix', name='%s_pointMtx_%s_utl' % (self.name, num))
-                d.outputTranslate.connect(mtx.inputTranslate)
-                d.outputRotate.connect(mtx.inputRotate)
-                mtx.inputScaleX.set(1.0)
-                scaleY.outputX.connect(mtx.inputScaleY)
-                scaleX.outputX.connect(mtx.inputScaleX)
+                coreUtils.connectDecomposedMatrix(d, grp)
 
-                loc = pmc.spaceLocator()
-                d.outputTranslate.connect(loc.t)
-                d.outputRotate.connect(loc.r)
-                scaleY.outputX.connect(loc.sy)
-                scaleX.outputX.connect(loc.sx)
+
+
 
 
 
