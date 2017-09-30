@@ -56,6 +56,10 @@ class DrSnake(drBase.DrBaseComponent):
         ikCtrls[1].getParent().setParent(ikCtrls[0])
         ikCtrls[-2].getParent().setParent(ikCtrls[-1])
 
+        twistExtractors = []
+        for i in range(len(points)-1):
+            twistExtractors.append(coreUtils.isolateTwist(ikCtrls[i].worldMatrix[0], ikCtrls[i+1].worldMatrix[0], name='%s_%s' % (self.name, num), axis='x'))
+
 
         # tangent vectors
         tangentVecs = []
@@ -132,11 +136,7 @@ class DrSnake(drBase.DrBaseComponent):
                 pointFrontVec.blender.set(blendVal)
                 pointFrontVecNorm = coreUtils.normalizeVector(pointFrontVec.output, name='%s_pointFrontVecNorm_%s_utl' % (self.name, num))
 
-                pointRefVec = coreUtils.blend(refVecs[i+1].output, refVecs[i].output, name='%s_pointRefVec_%s_utl' % (self.name, num))
-                pointRefVec.blender.set(blendVal)
-                pointRefVecNorm = coreUtils.normalizeVector(pointRefVec.output, name='%s_pointReferenceVecNorm_%s_utl' % (self.name, num))
-
-                pointUpVec = coreUtils.cross(pointFrontVecNorm.output, pointRefVecNorm.output, name='%s_pointUpVec_%s_utl' % (self.name, num))
+                pointUpVec = coreUtils.cross(pointFrontVecNorm.output, refVecs[i].output, name='%s_pointUpVec_%s_utl' % (self.name, num))
                 pointSideVec = coreUtils.cross(pointUpVec.output, pointFrontVecNorm.output, name='%s_pointUpVec_%s_utl' % (self.name, num))
 
                 pointMtx = pmc.createNode('fourByFourMatrix', name='%s_pointOrientMtx_%s_utl' % (self.name, num))
@@ -164,14 +164,26 @@ class DrSnake(drBase.DrBaseComponent):
                     parentMtx = coreUtils.inverseMatrix(mtx.matrixSum, name='%s_parentInverseMtx_%s_utl' % (self.name, num))
                 localOrientMtx = coreUtils.multiplyMatrices([pointMtx.output, parentMtx.outputMatrix], name='%s_pointMtx_%s_utl' % (self.name, num))
 
-                yVec = coreUtils.matrixAxisToVector(localOrientMtx.matrixSum, name='%s_pointYVec_%s_utl' % (self.name, num), axis='y')
-                scaleY = coreUtils.divide(1.0, yVec.outputY, name='%s_pointScaleY_%s_utl' % (self.name, num))
-
-                xVec = coreUtils.matrixAxisToVector(localOrientMtx.matrixSum, name='%s_pointXVec_%s_utl' % (self.name, num), axis='x')
-                scaleX = coreUtils.divide(1.0, xVec.outputX, name='%s_pointScaleX_%s_utl' % (self.name, num))
+                zVec = coreUtils.matrixAxisToVector(localOrientMtx.matrixSum, name='%s_pointZVec_%s_utl' % (self.name, num), axis='z')
+                zVecAbsY = coreUtils.forceAbsolute(zVec.outputY, name='%s_pointZVecAbsY_%s_utl' % (self.name, num))
+                zVecAbsX = coreUtils.forceAbsolute(zVec.outputX, name='%s_pointZVecAbsX_%s_utl' % (self.name, num))
+                pointProjectVec = pmc.createNode('vectorProduct', name='%s_pointProjectVec_%s_utl' % (self.name, num))
+                zVecAbsY[1].outputX.connect(pointProjectVec.input1Y)
+                zVecAbsX[1].outputX.connect(pointProjectVec.input1X)
+                pointProjectVec.input1Z.set(.001)
+                pointProjectVec.normalizeOutput.set(1)
+                pointProjectVec.operation.set(0)
+                scaleY = coreUtils.divide(1.0, zVec.outputZ, name='%s_pointScaleY_%s_utl' % (self.name, num))
+                scaleYBlend = coreUtils.blend(scaleY.outputX, 1.0, name='%s_pointScaleYBlend_%s_utl' % (self.name, num), blendAttr=pointProjectVec.outputY)
+                scaleXBlend = coreUtils.blend(scaleY.outputX, 1.0, name='%s_pointScaleXBlend_%s_utl' % (self.name, num), blendAttr=pointProjectVec.outputX)
 
                 d = coreUtils.decomposeMatrix(pointMtx.output, name='%s_pointMtxToSrt_%s_utl' % (self.name, num))
                 d.outputTranslate.connect(loc.t)
                 d.outputRotate.connect(loc.r)
-                scaleY.outputX.connect(loc.sy)
-                scaleX.outputX.connect(loc.sx)
+                scaleYBlend.outputR.connect(loc.sy)
+                scaleXBlend.outputR.connect(loc.sx)
+
+                # Friday to do
+                '''
+                sort out scaling issue when twisting chain
+                '''
