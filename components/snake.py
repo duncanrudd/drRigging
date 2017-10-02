@@ -44,6 +44,7 @@ class DrSnake(drBase.DrBaseComponent):
         # ik ctrls
         ikCtrls=[]
         refVecs = []
+        ikSrtList = []
         for i in range(len(points)):
             num = str(i+1).zfill(2)
 
@@ -53,13 +54,13 @@ class DrSnake(drBase.DrBaseComponent):
             b.t.set(points[i])
             ikCtrls.append(c)
             refVecs.append(coreUtils.matrixAxisToVector(c, name='%s_referenceVec_%s_utl' % (self.name, num), axis='x'))
+            ikSrtList.append(coreUtils.decomposeMatrix(c.worldMatrix[0], name='%s_ikCtrlMtxToSrt_%s_utl' % (self.name, num)))
         ikCtrls[1].getParent().setParent(ikCtrls[0])
         ikCtrls[-2].getParent().setParent(ikCtrls[-1])
 
         twistExtractors = []
         for i in range(len(points)-1):
             twistExtractors.append(coreUtils.isolateTwist(ikCtrls[i].worldMatrix[0], ikCtrls[i+1].worldMatrix[0], name='%s_%s' % (self.name, num), axis='x'))
-
 
         # tangent vectors
         tangentVecs = []
@@ -82,13 +83,11 @@ class DrSnake(drBase.DrBaseComponent):
             blendedTangentVecs.append(blendedTangentVecNorm)
         blendedTangentVecs.append(tangentVecs[-1])
 
-        # create sharp matrices at each lattice division
+        # create blend locator at each joint
+        segMtxList = []
+        segPoleVecList = []
         for i in range(len(ikCtrls)-1):
             num = str(i+1).zfill(2)
-            divs = latticeDivisions*2
-            exceptionList = [0, 1, len(ikCtrls)-2, len(ikCtrls)-3]
-            if i in exceptionList:
-                divs = latticeDivisions
             segMtx = pmc.createNode('fourByFourMatrix', name='%s_segMtx_%s_utl' % (self.name, num))
 
             upVec = coreUtils.cross(tangentVecs[i+1].output, refVecs[i].output, name='%s_upVec_%s_utl' % (self.name, num))
@@ -106,31 +105,48 @@ class DrSnake(drBase.DrBaseComponent):
             tangentVecs[i+1].outputY.connect(segMtx.in21)
             tangentVecs[i+1].outputZ.connect(segMtx.in22)
 
-            d = coreUtils.decomposeMatrix(ikCtrls[i].worldMatrix[0], name='%s_segMtxToSrt_%s_utl' % (self.name, num))
+            d = coreUtils.isDecomposed(ikCtrls[i])
             d.outputTranslateX.connect(segMtx.in30)
             d.outputTranslateY.connect(segMtx.in31)
             d.outputTranslateZ.connect(segMtx.in32)
 
-            dist = coreUtils.distanceBetweenNodes(ikCtrls[i], ikCtrls[i+1], name='%s_segLength_%s_utl' % (self.name, num))
+            segMtxList.append(segMtx)
+
+            sideVec = None
+            if i != 0:
+                segMidPoint = coreUtils.blend(coreUtils.isDecomposed(ikCtrls[i-1]).outputTranslate, coreUtils.isDecomposed(ikCtrls[i+1]).outputTranslate, name='%s_segMidPoint_%s_utl' % (self.name, num))
+                segMidPoint.blender.set(0.5)
+                segPoleVec = coreUtils.minus([segMidPoint.output, coreUtils.isDecomposed(ikCtrls[i]).outputTranslate], name='%s_segPoleVec_%s_utl' % (self.name, num))
+                segPoleVecCond = pmc.createNode('condition', name='%s_segPoleVecIsZero_%s_utl' % (self.name, num))
+                segDot = coreUtils.dot(blendedTangentVecs[i].output, tangentVecs[i].output, name='%s_segDot_%s_utl' % (self.name, num))
+                segDot.outputX.connect(segPoleVecCond.firstTerm)
+                segPoleVecCond.secondTerm.set(1.0)
+                refVecs[i].output.connect(segPoleVecCond.colorIfTrue)
+                segPoleVec.output3D.connect(segPoleVecCond.colorIfFalse)
+                segPoleVecNorm = coreUtils.normalizeVector(segPoleVecCond.outColor, name='%s_segPoleVecNorm_%s_utl' % (self.name, num))
+                segPoleVecList.append(segPoleVecNorm)
+                sideVec = coreUtils.cross(blendedTangentVecs[i].output, segPoleVecNorm.output, name='%s_sideVec_%s_utl' % (self.name, num))
+            else:
+                sideVec = coreUtils.cross(blendedTangentVecs[i].output, refVecs[i].output, name='%s_sideVec_%s_utl' % (self.name, num))
+                segPoleVecList.append(upVec)
+
+        # create sharp matrices at each lattice division
+        for i in range(len(ikCtrls)-1):
+            num = str(i+1).zfill(2)
+            divs = latticeDivisions*2
+            exceptionList = [0, 1, len(ikCtrls)-2, len(ikCtrls)-3]
+            if i in exceptionList:
+                divs = latticeDivisions
 
             for a in range(divs):
                 num = str((i*divs)+a+1).zfill(2)
                 blendVal = (1.0 / (divs))*a
 
-                mtx = None
-                d = None
-                if a == 0:
-                    mtx = segMtx
-                    d = coreUtils.decomposeMatrix(mtx.output, name='%s_pointMtxToSrt_%s_utl' % (self.name, num))
-                else:
-                    pointLocalOffset = coreUtils.convert(dist.distance, blendVal, name='%s_pointSegOffset_%s_utl' % (self.name, num))
-                    localMtx = pmc.createNode('fourByFourMatrix', name='%s_pointLocalMtx_%s_utl' % (self.name, num))
-                    pointLocalOffset.output.connect(localMtx.in32)
-                    mtx = coreUtils.multiplyMatrices([localMtx.output, segMtx.output], name='%s_pointMtx_%s_utl' % (self.name, num))
-                    d = coreUtils.decomposeMatrix(mtx.matrixSum, '%s_pointMtxToSrt_%s_utl' % (self.name, num))
-
                 # Create a locator the orients according to blended tangents
                 loc = coreUtils.addChild(self.rigGrp, 'locator', name='%s_pointOrient_%s_srt' % (self.name, num))
+
+                pointPosBlend = coreUtils.blend(ikSrtList[i+1].outputTranslate, ikSrtList[i].outputTranslate, name='%s_pointPosBlend_%s_utl' % (self.name, num))
+                pointPosBlend.blender.set(blendVal)
 
                 pointFrontVec = coreUtils.blend(blendedTangentVecs[i+1].output, blendedTangentVecs[i].output, name='%s_pointFrontVec_%s_utl' % (self.name, num))
                 pointFrontVec.blender.set(blendVal)
@@ -153,29 +169,28 @@ class DrSnake(drBase.DrBaseComponent):
                 pointFrontVec.outputG.connect(pointMtx.in21)
                 pointFrontVec.outputB.connect(pointMtx.in22)
 
-                d.outputTranslateX.connect(pointMtx.in30)
-                d.outputTranslateY.connect(pointMtx.in31)
-                d.outputTranslateZ.connect(pointMtx.in32)
+                pointPosBlend.outputR.connect(pointMtx.in30)
+                pointPosBlend.outputG.connect(pointMtx.in31)
+                pointPosBlend.outputB.connect(pointMtx.in32)
 
-                parentMtx = None
-                if a == 0:
-                    parentMtx = coreUtils.inverseMatrix(mtx.output, name='%s_parentInverseMtx_%s_utl' % (self.name, num))
-                else:
-                    parentMtx = coreUtils.inverseMatrix(mtx.matrixSum, name='%s_parentInverseMtx_%s_utl' % (self.name, num))
-                localOrientMtx = coreUtils.multiplyMatrices([pointMtx.output, parentMtx.outputMatrix], name='%s_pointMtx_%s_utl' % (self.name, num))
+                # Calculate X and Y scaling.
+                # Get dot product between front vector and tangent vector
+                scaleDot = coreUtils.dot(pointFrontVec.output, tangentVecs[i+1].output, name='%s_scaleDot_%s_utl' % (self.name, num))
+                scaleMult = coreUtils.divide(1.0, scaleDot.outputX, name='%s_pointScaleMult_%s_utl' % (self.name, num))
 
-                zVec = coreUtils.matrixAxisToVector(localOrientMtx.matrixSum, name='%s_pointZVec_%s_utl' % (self.name, num), axis='z')
-                zVecAbsY = coreUtils.forceAbsolute(zVec.outputY, name='%s_pointZVecAbsY_%s_utl' % (self.name, num))
-                zVecAbsX = coreUtils.forceAbsolute(zVec.outputX, name='%s_pointZVecAbsX_%s_utl' % (self.name, num))
-                pointProjectVec = pmc.createNode('vectorProduct', name='%s_pointProjectVec_%s_utl' % (self.name, num))
-                zVecAbsY[1].outputX.connect(pointProjectVec.input1Y)
-                zVecAbsX[1].outputX.connect(pointProjectVec.input1X)
-                pointProjectVec.input1Z.set(.001)
-                pointProjectVec.normalizeOutput.set(1)
-                pointProjectVec.operation.set(0)
-                scaleY = coreUtils.divide(1.0, zVec.outputZ, name='%s_pointScaleY_%s_utl' % (self.name, num))
-                scaleYBlend = coreUtils.blend(scaleY.outputX, 1.0, name='%s_pointScaleYBlend_%s_utl' % (self.name, num), blendAttr=pointProjectVec.outputY)
-                scaleXBlend = coreUtils.blend(scaleY.outputX, 1.0, name='%s_pointScaleXBlend_%s_utl' % (self.name, num), blendAttr=pointProjectVec.outputX)
+                pointXVec = coreUtils.cross(pointFrontVecNorm.output, segPoleVecList[i].output, name='%s_pointPoleVec_%s_utl' % (self.name, num))
+                pointAngle = pmc.createNode('angleBetween', name='%s_pointAngle_%s_utl' % (self.name, num))
+                pointRemap = pmc.createNode('remapValue', name='%s_pointAngleRemap_%s_utl' % (self.name, num))
+                pointSideVec.output.connect(pointAngle.vector1)
+                pointXVec.output.connect(pointAngle.vector2)
+                uc = coreUtils.convert(pointAngle.angle, 57.296, name='%s_pointAngleRadToDeg_%s_utl' % (self.name, num))
+                uc.output.connect(pointRemap.inputValue)
+                pointRemap.inputMax.set(180.0)
+                pointRemap.outputMin.set(-1.0)
+                pointAngleAbs = coreUtils.forceAbsolute(pointRemap.outValue, name='%s_pointAngleAbs_%s_utl' % (self.name, num))
+
+                scaleXBlend = coreUtils.blend(1.0, scaleMult.outputX, name='%s_pointXScale_%s_utl' % (self.name, num), blendAttr=pointAngleAbs[1].outputX)
+                scaleYBlend = coreUtils.blend(scaleMult.outputX, 1.0, name='%s_pointYScale_%s_utl' % (self.name, num), blendAttr=pointAngleAbs[1].outputX)
 
                 d = coreUtils.decomposeMatrix(pointMtx.output, name='%s_pointMtxToSrt_%s_utl' % (self.name, num))
                 d.outputTranslate.connect(loc.t)
@@ -183,7 +198,7 @@ class DrSnake(drBase.DrBaseComponent):
                 scaleYBlend.outputR.connect(loc.sy)
                 scaleXBlend.outputR.connect(loc.sx)
 
-                # Friday to do
-                '''
-                sort out scaling issue when twisting chain
-                '''
+
+
+
+
