@@ -83,6 +83,7 @@ class DrSnake(drBase.DrBaseComponent):
             blendedTangentVecs.append(blendedTangentVecNorm)
         blendedTangentVecs.append(tangentVecs[-1])
 
+
         # create blend locator at each joint
         segMtxList = []
         segPoleVecList = []
@@ -112,7 +113,6 @@ class DrSnake(drBase.DrBaseComponent):
 
             segMtxList.append(segMtx)
 
-            sideVec = None
             if i != 0:
                 segMidPoint = coreUtils.blend(coreUtils.isDecomposed(ikCtrls[i-1]).outputTranslate, coreUtils.isDecomposed(ikCtrls[i+1]).outputTranslate, name='%s_segMidPoint_%s_utl' % (self.name, num))
                 segMidPoint.blender.set(0.5)
@@ -125,25 +125,37 @@ class DrSnake(drBase.DrBaseComponent):
                 segPoleVec.output3D.connect(segPoleVecCond.colorIfFalse)
                 segPoleVecNorm = coreUtils.normalizeVector(segPoleVecCond.outColor, name='%s_segPoleVecNorm_%s_utl' % (self.name, num))
                 segPoleVecList.append(segPoleVecNorm)
-                sideVec = coreUtils.cross(blendedTangentVecs[i].output, segPoleVecNorm.output, name='%s_sideVec_%s_utl' % (self.name, num))
             else:
-                sideVec = coreUtils.cross(blendedTangentVecs[i].output, refVecs[i].output, name='%s_sideVec_%s_utl' % (self.name, num))
                 segPoleVecList.append(upVec)
 
         # create sharp matrices at each lattice division
+        posYList = []
+        negYList = []
+        posXList = []
+        negXList = []
+
         for i in range(len(ikCtrls)-1):
             num = str(i+1).zfill(2)
             divs = latticeDivisions*2
             exceptionList = [0, 1, len(ikCtrls)-2, len(ikCtrls)-3]
             if i in exceptionList:
                 divs = latticeDivisions
+            isStraightCond = None
+            if i < (len(ikCtrls)-2):
+                isStraightCond = pmc.createNode('condition', name='%s_isStraight_%s_utl' % (self.name, num))
+                tangentDot = coreUtils.dot(tangentVecs[i].output, blendedTangentVecs[i].output, name='%s_isStraightTangentDot_%s_utl' % (self.name, num))
+                tangentDot.outputX.connect(isStraightCond.firstTerm)
+                isStraightCond.secondTerm.set(1.0)
+                segPoleVecList[i+1].output.connect(isStraightCond.colorIfTrue)
+                segPoleVecList[i].output.connect(isStraightCond.colorIfFalse)
 
             for a in range(divs):
                 num = str((i*divs)+a+1).zfill(2)
                 blendVal = (1.0 / (divs))*a
 
-                # Create a locator the orients according to blended tangents
-                loc = coreUtils.addChild(self.rigGrp, 'locator', name='%s_pointOrient_%s_srt' % (self.name, num))
+                refVecBlend = coreUtils.blend(refVecs[i+1].output, refVecs[i].output, name='%s_refVecBlend_%s_utl' % (self.name, num))
+                refVecBlend.blender.set(blendVal)
+                refVecNorm = coreUtils.normalizeVector(refVecBlend.output, name='%s_pointRefVecNorm_%s_utl' % (self.name, num))
 
                 pointPosBlend = coreUtils.blend(ikSrtList[i+1].outputTranslate, ikSrtList[i].outputTranslate, name='%s_pointPosBlend_%s_utl' % (self.name, num))
                 pointPosBlend.blender.set(blendVal)
@@ -152,33 +164,20 @@ class DrSnake(drBase.DrBaseComponent):
                 pointFrontVec.blender.set(blendVal)
                 pointFrontVecNorm = coreUtils.normalizeVector(pointFrontVec.output, name='%s_pointFrontVecNorm_%s_utl' % (self.name, num))
 
-                pointUpVec = coreUtils.cross(pointFrontVecNorm.output, refVecs[i].output, name='%s_pointUpVec_%s_utl' % (self.name, num))
+                pointUpVec = coreUtils.cross(pointFrontVecNorm.output, refVecNorm.output, name='%s_pointUpVec_%s_utl' % (self.name, num))
                 pointSideVec = coreUtils.cross(pointUpVec.output, pointFrontVecNorm.output, name='%s_pointUpVec_%s_utl' % (self.name, num))
-
-                pointMtx = pmc.createNode('fourByFourMatrix', name='%s_pointOrientMtx_%s_utl' % (self.name, num))
-
-                pointSideVec.outputX.connect(pointMtx.in00)
-                pointSideVec.outputY.connect(pointMtx.in01)
-                pointSideVec.outputZ.connect(pointMtx.in02)
-
-                pointUpVec.outputX.connect(pointMtx.in10)
-                pointUpVec.outputY.connect(pointMtx.in11)
-                pointUpVec.outputZ.connect(pointMtx.in12)
-
-                pointFrontVec.outputR.connect(pointMtx.in20)
-                pointFrontVec.outputG.connect(pointMtx.in21)
-                pointFrontVec.outputB.connect(pointMtx.in22)
-
-                pointPosBlend.outputR.connect(pointMtx.in30)
-                pointPosBlend.outputG.connect(pointMtx.in31)
-                pointPosBlend.outputB.connect(pointMtx.in32)
 
                 # Calculate X and Y scaling.
                 # Get dot product between front vector and tangent vector
                 scaleDot = coreUtils.dot(pointFrontVec.output, tangentVecs[i+1].output, name='%s_scaleDot_%s_utl' % (self.name, num))
                 scaleMult = coreUtils.divide(1.0, scaleDot.outputX, name='%s_pointScaleMult_%s_utl' % (self.name, num))
 
-                pointXVec = coreUtils.cross(pointFrontVecNorm.output, segPoleVecList[i].output, name='%s_pointPoleVec_%s_utl' % (self.name, num))
+
+                pointXVec = None
+                if isStraightCond:
+                    pointXVec = coreUtils.cross(pointFrontVecNorm.output, isStraightCond.outColor, name='%s_pointPoleVec_%s_utl' % (self.name, num))
+                else:
+                    pointXVec = coreUtils.cross(pointFrontVecNorm.output, segPoleVecList[i].output, name='%s_pointPoleVec_%s_utl' % (self.name, num))
                 pointAngle = pmc.createNode('angleBetween', name='%s_pointAngle_%s_utl' % (self.name, num))
                 pointRemap = pmc.createNode('remapValue', name='%s_pointAngleRemap_%s_utl' % (self.name, num))
                 pointSideVec.output.connect(pointAngle.vector1)
@@ -192,11 +191,65 @@ class DrSnake(drBase.DrBaseComponent):
                 scaleXBlend = coreUtils.blend(1.0, scaleMult.outputX, name='%s_pointXScale_%s_utl' % (self.name, num), blendAttr=pointAngleAbs[1].outputX)
                 scaleYBlend = coreUtils.blend(scaleMult.outputX, 1.0, name='%s_pointYScale_%s_utl' % (self.name, num), blendAttr=pointAngleAbs[1].outputX)
 
-                d = coreUtils.decomposeMatrix(pointMtx.output, name='%s_pointMtxToSrt_%s_utl' % (self.name, num))
-                d.outputTranslate.connect(loc.t)
-                d.outputRotate.connect(loc.r)
-                scaleYBlend.outputR.connect(loc.sy)
-                scaleXBlend.outputR.connect(loc.sx)
+                pointSideVecScaled = pmc.createNode('multiplyDivide', name='%s_pointSideVecScaled_%s_utl' % (self.name, num))
+                coreUtils. connectAttrToMany(scaleXBlend.outputR, [pointSideVecScaled.input1X, pointSideVecScaled.input1Y, pointSideVecScaled.input1Z])
+                pointSideVec.output.connect(pointSideVecScaled.input2)
+
+                pointUpVecScaled = pmc.createNode('multiplyDivide', name='%s_pointUpVecScaled_%s_utl' % (self.name, num))
+                coreUtils.connectAttrToMany(scaleYBlend.outputR, [pointUpVecScaled.input1X, pointUpVecScaled.input1Y, pointUpVecScaled.input1Z])
+                pointUpVec.output.connect(pointUpVecScaled.input2)
+
+                pointMtx = pmc.createNode('fourByFourMatrix', name='%s_pointOrientMtx_%s_utl' % (self.name, num))
+
+                pointSideVecScaled.outputX.connect(pointMtx.in00)
+                pointSideVecScaled.outputY.connect(pointMtx.in01)
+                pointSideVecScaled.outputZ.connect(pointMtx.in02)
+
+                pointUpVecScaled.outputX.connect(pointMtx.in10)
+                pointUpVecScaled.outputY.connect(pointMtx.in11)
+                pointUpVecScaled.outputZ.connect(pointMtx.in12)
+
+                pointFrontVecNorm.outputX.connect(pointMtx.in20)
+                pointFrontVecNorm.outputY.connect(pointMtx.in21)
+                pointFrontVecNorm.outputZ.connect(pointMtx.in22)
+
+                pointPosBlend.outputR.connect(pointMtx.in30)
+                pointPosBlend.outputG.connect(pointMtx.in31)
+                pointPosBlend.outputB.connect(pointMtx.in32)
+
+                posYList.append(coreUtils.pointMatrixMult((0, 1, 0), pointMtx.output, name='%s_pointPosY_%s_utl' % (self.name, num)))
+                negYList.append(coreUtils.pointMatrixMult((0, -1, 0), pointMtx.output, name='%s_pointNegY_%s_utl' % (self.name, num)))
+                posXList.append(coreUtils.pointMatrixMult((1, 0, 0), pointMtx.output, name='%s_pointPosX_%s_utl' % (self.name, num)))
+                negXList.append(coreUtils.pointMatrixMult((-1, 0, 0), pointMtx.output, name='%s_pointNegX_%s_utl' % (self.name, num)))
+
+                '''
+                loc = pmc.spaceLocator()
+                d = coreUtils.decomposeMatrix(pointMtx.output, name='d')
+                coreUtils.connectDecomposedMatrix(d, loc)
+                '''
+
+        posYList.append(coreUtils.pointMatrixMult((0, 1, 0), ikCtrls[-1].worldMatrix[0], name='%s_pointPosY_%s_utl' % (self.name, num)))
+        negYList.append(coreUtils.pointMatrixMult((0, -1, 0), ikCtrls[-1].worldMatrix[0], name='%s_pointNegY_%s_utl' % (self.name, num)))
+        posXList.append(coreUtils.pointMatrixMult((1, 0, 0), ikCtrls[-1].worldMatrix[0], name='%s_pointPosX_%s_utl' % (self.name, num)))
+        negXList.append(coreUtils.pointMatrixMult((-1, 0, 0), ikCtrls[-1].worldMatrix[0], name='%s_pointNegX_%s_utl' % (self.name, num)))
+
+
+        # create lattice
+        latticeScale = math.sqrt(1*2)
+        pmc.select([])
+        lattice = pmc.lattice(dv=(2, 2, len(posYList)), scale=(1, 1, 1))
+        lattice[0].rename('%s_lattice_def' % self.name)
+        lattice[1].rename('%s_lattice_cage' % self.name)
+        lattice[2].rename('%s_lattice_base' % self.name)
+        lattice[2].rz.set(45)
+        lattice[2].s.set((latticeScale, latticeScale, coreUtils.getDistance(start, end)))
+
+        for i in range(len(posYList)):
+            posYList[i].output.connect(lattice[1].controlPoints[(i*4)+3])
+            negYList[i].output.connect(lattice[1].controlPoints[i*4])
+            posXList[i].output.connect(lattice[1].controlPoints[(i*4)+1])
+            negXList[i].output.connect(lattice[1].controlPoints[(i*4)+2])
+
 
 
 
