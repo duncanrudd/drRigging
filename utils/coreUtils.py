@@ -198,6 +198,18 @@ def getShape(transform=None):
     shape = pmc.listRelatives(transform, children=1, shapes=1)[0]
     return shape
 
+def blendAttrs(input1, input2, name, blendAttr):
+    '''
+    sets up blending of two float attrs using a blendTwoAttrNode
+    If a blendAttr is supplied, this is connected to the attributesBlender attribute
+    '''
+    blend = pmc.createNode('blendTwoAttr', name=name)
+    input1.connect(blend.input[1])
+    input2.connect(blend.input[2])
+    if blendAttr:
+        blendAttr.connect(blend.attributesBlender)
+    return blend
+
 def blend(input1, input2, name, blendAttr=None):
     '''
     sets up blending of input1 and input2
@@ -618,6 +630,12 @@ def distanceBetweenNodes(node1, node2, name):
     node2.worldMatrix[0].connect(dist.inMatrix2)
     return dist
 
+def distanceBetweenPoints(p1, p2, name):
+    dist = pmc.createNode('distanceBetween', name=name)
+    p1.connect(dist.point1)
+    p2.connect(dist.point2)
+    return dist
+
 def convert(input, factor, name):
     '''
     creates a unit conversion node with input connected to input
@@ -680,18 +698,14 @@ def pointMatrixMult(point, matrix, name):
     connect = False
     vp = pmc.createNode('vectorProduct', name=name)
     if type(point) == pmc.general.Attribute:
-        val = point.get()
         connect = True
-    else:
-        val = point
     if connect:
         point.connect(vp.input1)
     else:
         vp.input1.set(point)
     matrix.connect(vp.matrix)
-    vp.operartion.set(4)
+    vp.operation.set(4)
     return vp
-
 
 def matrixAxisToVector(obj, name, axis='x', normalize=1):
     '''
@@ -699,11 +713,26 @@ def matrixAxisToVector(obj, name, axis='x', normalize=1):
     normalizes output by default
     '''
     vp = pmc.createNode('vectorProduct', name=name)
-    obj.worldMatrix.connect(vp.matrix)
+    if type(obj) == pmc.general.Attribute:
+        obj.connect(vp.matrix)
+    else:
+        obj.worldMatrix.connect(vp.matrix)
     vp.normalizeOutput.set(normalize)
     vp.operation.set(3)
     pmc.setAttr('%s.input1%s' % (vp.name(), axis[-1].upper()), 1)
     return vp
+
+def blendMatrices(mtx1, mtx2, weight1, weight2, name):
+    '''
+    Creates a wtAddMatrix node to blend between 2 matrices
+    '''
+    node = pmc.createNode('wtAddMatrix', name=name)
+    mtx1.connect(node.wtMatrix[0].matrixIn)
+    mtx2.connect(node.wtMatrix[1].matrixIn)
+    node.wtMatrix[0].weightIn.set(weight1)
+    node.wtMatrix[1].weightIn.set(weight2)
+
+    return node
 
 ###
 #######################################################################################################################
@@ -815,6 +844,14 @@ def multiplyMatrices(matrixList, name):
         matrixList[i].connect(attr)
     return mm
 
+def inverseMatrix(matrix, name):
+    '''
+    Creates an inverseMatrix node. connects matrix to it. Returns the new node
+    '''
+    inv = pmc.createNode('inverseMatrix', name=name)
+    matrix.connect(inv.inputMatrix)
+    return inv
+
 def choose(inputList, name, choiceAttr=None):
     '''
     creates a choice node with inputs for each in inputList
@@ -923,3 +960,24 @@ def selectSkinnedJoints(node=None):
 
     influences = pmc.skinCluster(node, q=1, influence=1)
     pmc.select(influences)
+
+def vectorBetweenNodes(start, end, name):
+    '''
+    Creates nodes to calculate the vector from start to end nodes. Checks if either node's matrix has been decomposed,
+    if not creates decomposeMatrix nodes. Subtracts, start position from end position using a plusminusaverage node.
+    Returns plusminusAverage node.
+    '''
+    dStart = isDecomposed(start)
+    dEnd = isDecomposed(end)
+    pma = minus([dEnd.outputTranslate, dStart.outputTranslate], name=name)
+    return pma
+
+def forceAbsolute(attr, name):
+    '''
+    Creates two multiply divide nodes set to power. The first squares the value of attr (pow2), the second get the
+    square root of the first (pow0.5)
+    returns the second node
+    '''
+    mdSquare = power(attr, 2.0, name='%s_square_utl' % name)
+    mdSquareRoot = power(mdSquare.outputX, 0.5, name='%s_squareRoot_utl' % name)
+    return [mdSquare, mdSquareRoot]

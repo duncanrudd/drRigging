@@ -20,7 +20,7 @@ def curveBetweenNodes(start=None, end=None, numCVs=4, name='', degree=3):
     return crv
 
 
-def curveThroughPoints(positions=None, name='', degree=3, bezier=0):
+def curveThroughPoints(positions=None, name='', degree=3, bezier=0, rebuild=1):
     if not positions:
         positions = [pmc.xform(p, q=1, ws=1, t=1) for p in pmc.selected()]
 
@@ -37,8 +37,17 @@ def curveThroughPoints(positions=None, name='', degree=3, bezier=0):
         knots.append(knotsMax + 1)
 
     crv = pmc.curve(p=positions, k=knots, d=degree, name='%s_CRV' % name)
-    pmc.rebuildCurve(crv, ch=0, rpo=1, kr=0, kcp=1, d=degree)
+    if rebuild:
+        pmc.rebuildCurve(crv, ch=0, rpo=1, kr=0, kcp=1, d=degree)
     return crv
+
+def drivenCurve(driverAttrs, name='', degree=3, rebuild=1):
+    positions = [attr.get() for attr in driverAttrs]
+    crv = curveThroughPoints(positions, name, degree, rebuild)
+    for i in range(len(driverAttrs)):
+        driverAttrs[i].connect(crv.controlPoints[i])
+    return crv
+
 
 
 def bindCurve(crv=None):
@@ -251,25 +260,35 @@ def getClosestPointOnCurve(crv, point=None, obj=None):
     return result
 
 
-def sampleCurve(crv=None, numSamples=6, name=''):
+def sampleCurve(crv=None, numSamples=6, name='', even=0):
     '''
     creates a pointOnCurveInfo node for each in numSamples and connects its parameter to the supplied curve
     returns a list of the created nodes
     '''
     nodes = []
+    mps = []
+    if even:
+        mps = nodesAlongCurve(crv, numNodes=numSamples, groups=0)
+
     for i in range(numSamples):
         num = str(i + 1).zfill(2)
 
-        inf = pmc.createNode('pointOnCurveInfo', name='crvInfo_%s_%s_UTL' % (name, num))
+        inf = pmc.createNode('pointOnCurveInfo', name='%s_crvInf_%s_utl' % (name, num))
         inf.turnOnPercentage.set(1)
         crv.worldSpace[0].connect(inf.inputCurve)
 
         if numSamples != 1:
-            inf.parameter.set((1.0 / (numSamples - 1)) * i)
+            if even:
+                inf.parameter.set(getClosestPointOnCurve(crv, mps['mpNodes'][i].allCoordinates.get()))
+            else:
+                inf.parameter.set((1.0 / (numSamples - 1)) * i)
         else:
             inf.parameter.set(0.5)
         nodes.append(inf)
 
+    if even:
+        delNodes = [node for node in mps['mpNodes']]
+        pmc.delete(delNodes)
     return nodes
 
 
