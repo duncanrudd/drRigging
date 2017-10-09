@@ -131,6 +131,9 @@ class DrSnake(drBase.DrBaseComponent):
         negXList = []
 
         sharpPointPositions = []
+        pointSideVecs = []
+        pointUpVecs = []
+        pointFrontVecs = []
 
         for i in range(len(ikCtrls)-1):
             num = str(i+1).zfill(2)
@@ -160,11 +163,14 @@ class DrSnake(drBase.DrBaseComponent):
                 sharpPointPositions.append(pointPosBlend)
 
                 pointFrontVec = coreUtils.blend(blendedTangentVecs[i+1].output, blendedTangentVecs[i].output, name='%s_pointFrontVec_%s_utl' % (self.name, num))
+                pointFrontVecs.append(pointFrontVec)
                 pointFrontVec.blender.set(blendVal)
                 pointFrontVecNorm = coreUtils.normalizeVector(pointFrontVec.output, name='%s_pointFrontVecNorm_%s_utl' % (self.name, num))
 
                 pointUpVec = coreUtils.cross(pointFrontVecNorm.output, refVecNorm.output, name='%s_pointUpVec_%s_utl' % (self.name, num))
+                pointUpVecs.append(pointUpVec)
                 pointSideVec = coreUtils.cross(pointUpVec.output, pointFrontVecNorm.output, name='%s_pointUpVec_%s_utl' % (self.name, num))
+                pointSideVecs.append(pointSideVec)
 
                 # Calculate X and Y scaling.
                 # Get dot product between front vector and tangent vector
@@ -217,48 +223,15 @@ class DrSnake(drBase.DrBaseComponent):
                 pointPosBlend.outputG.connect(pointMtxSharp.in31)
                 pointPosBlend.outputB.connect(pointMtxSharp.in32)
 
-                posYList.append(coreUtils.pointMatrixMult((0, 1, 0), pointMtxSharp.output, name='%s_pointPosY_%s_utl' % (self.name, num)))
-                negYList.append(coreUtils.pointMatrixMult((0, -1, 0), pointMtxSharp.output, name='%s_pointNegY_%s_utl' % (self.name, num)))
-                posXList.append(coreUtils.pointMatrixMult((1, 0, 0), pointMtxSharp.output, name='%s_pointPosX_%s_utl' % (self.name, num)))
-                negXList.append(coreUtils.pointMatrixMult((-1, 0, 0), pointMtxSharp.output, name='%s_pointNegX_%s_utl' % (self.name, num)))
+                posYList.append(coreUtils.pointMatrixMult((0, 1, 0), pointMtxSharp.output, name='%s_sharpPointPosY_%s_utl' % (self.name, num)))
+                negYList.append(coreUtils.pointMatrixMult((0, -1, 0), pointMtxSharp.output, name='%s_sharpPointNegY_%s_utl' % (self.name, num)))
+                posXList.append(coreUtils.pointMatrixMult((1, 0, 0), pointMtxSharp.output, name='%s_sharpPointPosX_%s_utl' % (self.name, num)))
+                negXList.append(coreUtils.pointMatrixMult((-1, 0, 0), pointMtxSharp.output, name='%s_sharpPointNegX_%s_utl' % (self.name, num)))
 
-                # Soft matrix
-                '''
-                pointMtxSoft = pmc.createNode('fourByFourMatrix', name='%s_pointMtxSoft_%s_utl' % (self.name, num))
-                crvInf = pmc.createNode('pointOnCurveInfo', name='%s_softCrvInfo_%s_utl' % (self.name, num))
-                softCrv.worldSpace[0].connect(crvInf.inputCurve)
-                seg=i
-                if i == len(ikCtrls)-2:
-                    seg = i-2
-                elif i > 0:
-                    seg = i-1
-                crvInf.parameter.set(seg + blendVal)
-
-                softPointUpVec = coreUtils.cross(crvInf.normalizedTangent, pointSideVec.output, name='%s_softPointUpVec_%s_utl' % (self.name, num))
-
-                pointSideVec.outputX.connect(pointMtxSoft.in00)
-                pointSideVec.outputY.connect(pointMtxSoft.in01)
-                pointSideVec.outputZ.connect(pointMtxSoft.in02)
-
-                softPointUpVec.outputX.connect(pointMtxSoft.in10)
-                softPointUpVec.outputY.connect(pointMtxSoft.in11)
-                softPointUpVec.outputZ.connect(pointMtxSoft.in12)
-
-                crvInf.normalizedTangentX.connect(pointMtxSoft.in20)
-                crvInf.normalizedTangentY.connect(pointMtxSoft.in21)
-                crvInf.normalizedTangentZ.connect(pointMtxSoft.in22)
-
-                crvInf.positionX.connect(pointMtxSoft.in30)
-                crvInf.positionY.connect(pointMtxSoft.in31)
-                crvInf.positionZ.connect(pointMtxSoft.in32)
-
-                '''
-
-
-        posYList.append(coreUtils.pointMatrixMult((0, 1, 0), ikCtrls[-1].worldMatrix[0], name='%s_pointPosY_%s_utl' % (self.name, num)))
-        negYList.append(coreUtils.pointMatrixMult((0, -1, 0), ikCtrls[-1].worldMatrix[0], name='%s_pointNegY_%s_utl' % (self.name, num)))
-        posXList.append(coreUtils.pointMatrixMult((1, 0, 0), ikCtrls[-1].worldMatrix[0], name='%s_pointPosX_%s_utl' % (self.name, num)))
-        negXList.append(coreUtils.pointMatrixMult((-1, 0, 0), ikCtrls[-1].worldMatrix[0], name='%s_pointNegX_%s_utl' % (self.name, num)))
+        posYList.append(coreUtils.pointMatrixMult((0, 1, 0), ikCtrls[-1].worldMatrix[0], name='%s_sharpPointPosY_%s_utl' % (self.name, num)))
+        negYList.append(coreUtils.pointMatrixMult((0, -1, 0), ikCtrls[-1].worldMatrix[0], name='%s_sharpPointNegY_%s_utl' % (self.name, num)))
+        posXList.append(coreUtils.pointMatrixMult((1, 0, 0), ikCtrls[-1].worldMatrix[0], name='%s_sharpPointPosX_%s_utl' % (self.name, num)))
+        negXList.append(coreUtils.pointMatrixMult((-1, 0, 0), ikCtrls[-1].worldMatrix[0], name='%s_sharpPointNegX_%s_utl' % (self.name, num)))
 
         sharpPointPositions.append(coreUtils.isDecomposed(ikCtrls[-1]))
 
@@ -313,24 +286,57 @@ class DrSnake(drBase.DrBaseComponent):
             index = len(softPointPositions)
             softPointPositions.append(sharpPointPositions[index])
 
+        # Soft Matrices
+        softPosYList = []
+        softNegYList = []
+        softPosXList = []
+        softNegXList = []
+
         for i in range(len(softPointPositions)-1):
+            pointMtxSoft = pmc.createNode('fourByFourMatrix', name='%s_pointMtxSoft_%s_utl' % (self.name, num))
+            softPointUpVec = pointUpVecs[i]
+
+            if type(softPointPositions[i]) == pmc.nodetypes.PointOnCurveInfo:
+                print softPointPositions[i]
+                softPointUpVec = coreUtils.cross(softPointPositions[i].normalizedTangent, pointSideVecs[i].output, name='%s_softPointUpVec_%s_utl' % (self.name, num))
+
+                softPointPositions[i].normalizedTangentX.connect(pointMtxSoft.in20)
+                softPointPositions[i].normalizedTangentY.connect(pointMtxSoft.in21)
+                softPointPositions[i].normalizedTangentZ.connect(pointMtxSoft.in22)
+
+                softPointPositions[i].positionX.connect(pointMtxSoft.in30)
+                softPointPositions[i].positionY.connect(pointMtxSoft.in31)
+                softPointPositions[i].positionZ.connect(pointMtxSoft.in32)
+            else:
+                pointFrontVecs[i].outputR.connect(pointMtxSoft.in20)
+                pointFrontVecs[i].outputG.connect(pointMtxSoft.in21)
+                pointFrontVecs[i].outputB.connect(pointMtxSoft.in22)
+
+                softPointPositions[i].outputR.connect(pointMtxSoft.in30)
+                softPointPositions[i].outputG.connect(pointMtxSoft.in31)
+                softPointPositions[i].outputB.connect(pointMtxSoft.in32)
+
+            pointSideVecs[i].outputX.connect(pointMtxSoft.in00)
+            pointSideVecs[i].outputY.connect(pointMtxSoft.in01)
+            pointSideVecs[i].outputZ.connect(pointMtxSoft.in02)
+
+            softPointUpVec.outputX.connect(pointMtxSoft.in10)
+            softPointUpVec.outputY.connect(pointMtxSoft.in11)
+            softPointUpVec.outputZ.connect(pointMtxSoft.in12)
+
+            softPosYList.append(coreUtils.pointMatrixMult((0, 1, 0), pointMtxSoft.output, name='%s_softPointPosY_%s_utl' % (self.name, num)))
+            softNegYList.append(coreUtils.pointMatrixMult((0, -1, 0), pointMtxSoft.output, name='%s_softPointNegY_%s_utl' % (self.name, num)))
+            softPosXList.append(coreUtils.pointMatrixMult((1, 0, 0), pointMtxSoft.output, name='%s_softPointPosX_%s_utl' % (self.name, num)))
+            softNegXList.append(coreUtils.pointMatrixMult((-1, 0, 0), pointMtxSoft.output, name='%s_softPointNegX_%s_utl' % (self.name, num)))
+
+            d = coreUtils.decomposeMatrix(pointMtxSoft.output, name='mtxSoft')
             loc = pmc.spaceLocator()
-            try:
-                softPointPositions[i].output.connect(loc.t)
-            except:
-                softPointPositions[i].position.connect(loc.t)
-        loc = pmc.spaceLocator()
-        softPointPositions[-1].outputTranslate.connect(loc.t)
+            coreUtils.connectDecomposedMatrix(d, loc)
 
-
-
-
-
-
-
-
-
-
+        softPosYList.append(posYList[-1])
+        softNegYList.append(negYList[-1])
+        softPosXList.append(posXList[-1])
+        softNegXList.append(negXList[-1])
 
         # create lattice
         latticeScale = math.sqrt(1*2)
@@ -343,18 +349,16 @@ class DrSnake(drBase.DrBaseComponent):
         lattice[2].s.set((latticeScale, latticeScale, coreUtils.getDistance(start, end)))
 
         for i in range(len(posYList)):
+            '''
             posYList[i].output.connect(lattice[1].controlPoints[(i*4)+3])
             negYList[i].output.connect(lattice[1].controlPoints[i*4])
             posXList[i].output.connect(lattice[1].controlPoints[(i*4)+1])
             negXList[i].output.connect(lattice[1].controlPoints[(i*4)+2])
-
-        '''
-        SOFT POINTS
-        -- Based on a degree 2 interpolation of sharp points.
-        -- Soft segments run from mid point to midpoint of sharp segments apart from at the ends where they run from the end to the following mid point.
-        -- Points at midpoints do not change position based on soft vs sharp
-        -- Each point is only affected by the softness parameters of a single joint
-        '''
+            '''
+            softPosYList[i].output.connect(lattice[1].controlPoints[(i*4)+3])
+            softNegYList[i].output.connect(lattice[1].controlPoints[i*4])
+            softPosXList[i].output.connect(lattice[1].controlPoints[(i*4)+1])
+            softNegXList[i].output.connect(lattice[1].controlPoints[(i*4)+2])
 
 
 
