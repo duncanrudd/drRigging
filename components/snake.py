@@ -408,9 +408,9 @@ class DrSnake(drBase.DrBaseComponent):
 
             else:
                 resPosYList.append(posYList[i])
-                resNegYList.append(posYList[i])
-                resPosXList.append(posYList[i])
-                resNegXList.append(posYList[i])
+                resNegYList.append(negYList[i])
+                resPosXList.append(posXList[i])
+                resNegXList.append(negXList[i])
 
 
         # create lattice
