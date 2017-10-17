@@ -165,17 +165,17 @@ class DrSnake(drBase.DrBaseComponent):
             localTangentVec.outputY.connect(localProjectVec.input1Y)
 
             posYRemap = pmc.createNode('remapValue', name='%s_seg_%s_posYRemap_utl' % (self.name, num))
-            localYVecAbs.outputX.connect(posYRemap.inputValue)
+            localProjectVec.outputY.connect(posYRemap.inputValue)
 
             negYRemap = pmc.createNode('remapValue', name='%s_seg_%s_negYRemap_utl' % (self.name, num))
-            negYInvert = coreUtils.convert(localYVecAbs.outputX, -1, name='%s_seg_%s_negYInvert_utl' % (self.name, num))
+            negYInvert = coreUtils.convert(localProjectVec.outputY, -1, name='%s_seg_%s_negYInvert_utl' % (self.name, num))
             negYInvert.output.connect(negYRemap.inputValue)
 
             posXRemap = pmc.createNode('remapValue', name='%s_seg_%s_posXRemap_utl' % (self.name, num))
-            localXVecAbs.outputX.connect(posXRemap.inputValue)
+            localProjectVec.outputX.connect(posXRemap.inputValue)
 
             negXRemap = pmc.createNode('remapValue', name='%s_seg_%s_negXRemap_utl' % (self.name, num))
-            negXInvert = coreUtils.convert(localXVecAbs.outputX, -1, name='%s_seg_%s_negXInvert_utl' % (self.name, num))
+            negXInvert = coreUtils.convert(localProjectVec.outputX, -1, name='%s_seg_%s_negXInvert_utl' % (self.name, num))
             negXInvert.output.connect(negXRemap.inputValue)
 
             posYOuterMult = coreUtils.multiply(posYRemap.outValue, ikCtrls[i].soften_outer, name='%s_seg_%s_posYOuterMult_utl' % (self.name, num))
