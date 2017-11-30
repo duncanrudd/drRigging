@@ -149,18 +149,13 @@ class DrSpine(drBase.DrBaseComponent):
                 srtList.append(d)
         else:
             srtList = []
-            d = coreUtils.decomposeMatrix(self.baseSubCtrl.worldMatrix[0], name='%s_baseMtxToSrt_utl' % self.name)
-            self.baseSubCtrl.rotateOrder.connect(d.inputRotateOrder)
-            d.outputTranslate.connect(self.fkCrv.controlPoints[0])
-            d.outputTranslate.connect(self.ikCrv.controlPoints[0])
-            srtList.append(d)
             for i in range(len(self.fkCtrls)):
                 num = str(i+1).zfill(2)
                 ctrl = self.fkCtrls[i]
                 d = coreUtils.decomposeMatrix(ctrl.worldMatrix[0], name='%s_localFkMtx%sToSrt_utl' % (self.name, num))
                 ctrl.rotateOrder.connect(d.inputRotateOrder)
-                d.outputTranslate.connect(self.fkCrv.controlPoints[i+1])
-                d.outputTranslate.connect(self.ikCrv.controlPoints[i+1])
+                d.outputTranslate.connect(self.fkCrv.controlPoints[i])
+                d.outputTranslate.connect(self.ikCrv.controlPoints[i])
                 srtList.append(d)
 
 
