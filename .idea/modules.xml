@@ -2,8 +2,10 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+      <module fileurl="file://E:/PROJECTS/NEXUS/ARSTICKERS/code/.idea/code.iml" filepath="E:/PROJECTS/NEXUS/ARSTICKERS/code/.idea/code.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/drRigging.iml" filepath="$PROJECT_DIR$/.idea/drRigging.iml" />
       <module fileurl="file://$PROJECT_DIR$/../drTools/.idea/drTools.iml" filepath="$PROJECT_DIR$/../drTools/.idea/drTools.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../rooftops/.idea/rooftops.iml" filepath="$PROJECT_DIR$/../rooftops/.idea/rooftops.iml" />
     </modules>
   </component>
 </project>

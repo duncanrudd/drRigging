@@ -46,18 +46,23 @@ class DrSpine(drBase.DrBaseComponent):
         ctrlSize = coreUtils.getDistance(joints[0], joints[-1]) * .5
 
         #base
-        self.baseCtrl = controls.circleBumpCtrl(name='%s_base_ctrl' % self.name, axis=axis, radius=ctrlSize)
+        self.baseCtrl = controls.hexCtrl(name='%s_base_ctrl' % self.name, axis=axis, radius=ctrlSize)
         self.baseCtrl.setParent(self.interfaceGrp)
         coreUtils.align(self.baseCtrl, joints[0])
         baseBuffer = coreUtils.addParent(self.baseCtrl, 'group', name='%s_base_buffer_srt' % self.name)
         self.ctrls.append(self.baseCtrl)
 
-        self.baseSubCtrl = controls.circleBumpCtrl(name='%s_baseSub_ctrl' % self.name, axis=axis, radius=ctrlSize*.8)
+        self.baseSubCtrl = controls.hexCtrl(name='%s_baseSub_ctrl' % self.name, axis=axis, radius=ctrlSize*.8)
         self.baseSubCtrl.setParent(self.baseCtrl)
         coreUtils.align(self.baseSubCtrl, joints[0])
         self.ctrls.append(self.baseSubCtrl)
 
         baseMtx = coreUtils.isDecomposed(self.baseSubCtrl)
+        # Create offset srt so that spine can be offset from body controls
+        baseSrt = coreUtils.addChild(self.rigGrp, 'group', '%s_base_srt' % self.name)
+        offsetSrt = coreUtils.addChild(baseSrt, 'group', '%s_offset_srt' % self.name)
+        coreUtils.connectDecomposedMatrix(baseMtx, baseSrt)
+        offsetMtx = coreUtils.isDecomposed(offsetSrt)
 
         # settings
         self.settingsCtrl = controls.squareChamferCtrl(size=ctrlSize * .2, axis=axis,
@@ -70,12 +75,14 @@ class DrSpine(drBase.DrBaseComponent):
 
         #FK
         self.fkCtrls = []
+        fkOffsetSrt = coreUtils.addChild(self.baseSubCtrl, 'group', '%s_fkOffset_srt' % self.name)
+        coreUtils.connectAttrs(offsetSrt, fkOffsetSrt, ['t', 'r', 's'])
         for i in range(len(joints)-1):
             num = str(i+1).zfill(2)
             ctrlNum = str((i / ctrlInterval) + 1).zfill(2)
             c = None
             if i % ctrlInterval == 0:
-                c = controls.circleBumpCtrl(name='%s_fk_%s_ctrl' % (self.name, ctrlNum), axis=axis, radius=ctrlSize*.5)
+                c = controls.hexCtrl(name='%s_fk_%s_ctrl' % (self.name, ctrlNum), axis=axis, radius=ctrlSize*.5)
                 self.ctrls.append(c)
             else:
                 c = coreUtils.pmc.group(empty=1, name='%s_fk_%s_srt' % (self.name, num))
@@ -85,7 +92,7 @@ class DrSpine(drBase.DrBaseComponent):
             b = coreUtils.addParent(c, 'group', name='%s_fk%s_buffer_srt' % (self.name, num))
             coreUtils.align(b, joints[i])
             if i == 0:
-                b.setParent(self.baseSubCtrl)
+                b.setParent(fkOffsetSrt)
             else:
                 b.setParent(self.fkCtrls[-1])
             self.fkCtrls.append(c)
@@ -97,7 +104,7 @@ class DrSpine(drBase.DrBaseComponent):
                 ctrlNum = str((i / ctrlInterval) + 1).zfill(2)
                 c = None
                 if i % ctrlInterval == 0:
-                    c = controls.circleBumpCtrl(name='%s_fkReverse_%s_ctrl' % (self.name, ctrlNum), axis=axis, radius=ctrlSize*.4)
+                    c = controls.hexCtrl(name='%s_fkReverse_%s_ctrl' % (self.name, ctrlNum), axis=axis, radius=ctrlSize*.4)
                     self.ctrls.append(c)
                 else:
                     c = coreUtils.pmc.group(empty=1, name='%s_fkReverse_%s_srt' % (self.name, num))
@@ -129,7 +136,7 @@ class DrSpine(drBase.DrBaseComponent):
                     d.outputTranslate.connect(self.ikCrv.controlPoints[len(joints)-1])
                     srtList.append(d)
                 elif i == len(self.fkRevCtrls) - 1:
-                    multMtx = coreUtils.multiplyMatrices([self.baseSubCtrl.worldMatrix[0],
+                    multMtx = coreUtils.multiplyMatrices([offsetSrt.worldMatrix[0],
                                                           self.fkCtrls[len(self.fkCtrls)-i].worldInverseMatrix[0],
                                                           revCtrl.worldMatrix[0]],
                                                          name='%s_localFkReverseMtx%s_utl' % (self.name, num))
@@ -193,7 +200,7 @@ class DrSpine(drBase.DrBaseComponent):
 
 
         # rotate orders for ctrls
-        rotateOrderDict={'x':0, 'y':1, 'z':2}
+        rotateOrderDict={'x':0, 'y':2, 'z':1}
         for ctrl in self.ctrls:
             ctrl.rotateOrder.set(rotateOrderDict[axis])
 

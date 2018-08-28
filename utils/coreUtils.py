@@ -561,6 +561,34 @@ def multiply(input1, input2, name, operation=1):
 
     return md
 
+def multiplyDouble(input1, input2, name):
+    md = pmc.createNode('multDoubleLinear', name=name)
+    if type(input1) == pmc.general.Attribute:
+        val = input1.get()
+        connect=True
+    else:
+        val = input1
+        connect=False
+
+    if connect:
+        input1.connect(md.input1)
+    else:
+        md.input1.set(input1)
+
+    if type(input2) == pmc.general.Attribute:
+        val = input2.get()
+        connect=True
+    else:
+        val = input2
+        connect=False
+
+    if connect:
+        input2.connect(md.input2)
+    else:
+        md.input2.set(input2)
+    return md
+
+
 def divide(input1, input2, name):
     md = multiply(input1, input2, name, operation=2)
     return md

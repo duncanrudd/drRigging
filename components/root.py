@@ -26,8 +26,8 @@ class DrRoot(drBase.DrBaseComponent):
     def build(self, numCtrls, ctrlSize):
         for i in range(numCtrls):
             num = str(i+1).zfill(2)
-            c = controls.circleBumpCtrl(name='%s_%s_ctrl' % (self.name, num),
-                                        axis='y', radius=ctrlSize*(1-(0.15*i)))
+            c = controls.hexCtrl(name='%s_%s_ctrl' % (self.name, num),
+                                        axis='z', radius=ctrlSize*(1-(0.15*i)))
             b = coreUtils.addParent(c, 'group', '%s_%s_buffer_srt' % (self.name, num))
             if i==0:
                 b.setParent(self.interfaceGrp)

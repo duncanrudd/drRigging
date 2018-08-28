@@ -59,6 +59,35 @@ def circleBumpCtrl(radius=20.0, name='', axis='z'):
         orientCtrl(ctrl=ctrl, axis=axis)
     return ctrl
 
+def hexCtrl(radius=20.0, name='', axis='z'):
+    '''
+    creates a circular nurbs curve of degree 1 with a raised section front and rear to indicate orientation
+
+    '''
+
+    points = [(0, 0.2, 1.217186), (0.309017, 0.2, 0.951057), (0.309017, 0.2, 0.951057), (0.382683, 0, 0.92388), (0.382683, 0, 0.92388), (0.707107, 0, 0.707107), (0.92388, 0, 0.382683), (1, 0, 0),
+              (0.92388, 0, -0.382683), (0.707107, 0, -0.707107), (0.382683, 0, -0.92388), (0.382683, 0, -0.92388), (0.309017, 0.2, -0.951057), (0.309017, 0.2, -0.951057), (0, 0.2, -1),
+              (-0.309017, 0.2, -0.951057), (-0.309017, 0.2, -0.951057), (-0.382683, 0, -0.92388), (-0.382683, 0, -0.92388), (-0.707107, 0, -0.707107), (-0.92388, 0, -0.382683), (-1, 0, 0),
+              (-0.92388, 0, 0.382683), (-0.707107, 0, 0.707107), (-0.382683, 0, 0.92388), (-0.382683, 0, 0.92388), (-0.309017, 0.2, 0.951057), (-0.309017, 0.2, 0.951057), (0, 0.2, 1.217186)]
+
+    knots = [0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 26, 26]
+
+    ctrl = pmc.curve(name=name, d=3,
+                     p=[(point[0]*radius, point[1]*radius, point[2]*radius) for point in points],
+                     k=knots)
+
+
+    shape = coreUtils.getShape(ctrl)
+    shape.rename(ctrl.name() + 'Shape')
+
+    if '-' in axis:
+        pmc.select('%s.cv[*]' % shape)
+        pmc.rotate(180, rotateZ=True)
+
+    if axis != 'z':
+        orientCtrl(ctrl=ctrl, axis=axis)
+    return ctrl
+
 
 def boxCtrl(size=20.0, name=''):
     '''
@@ -167,9 +196,29 @@ def pinCtrl(radius=20.0, name='', axis='z'):
 
     return line
 
+def triCtrl(size=20.0, name='', aim='up'):
+    '''
+    creates a triangular nurbs curve
 
+    '''
+    points = []
+    pos = size * .33
+    neg = pos * -1
+    if aim == 'up':
+        points = [(neg, 0, 0), (pos, 0, 0), (0, size, 0), (neg, 0, 0)]
+    elif aim == 'right':
+        points = [(0, neg, 0), (0, pos, 0), (-size, 0, 0), (0, neg, 0)]
+    elif aim == 'left':
+        points = [(0, neg, 0), (0, pos, 0), (size, 0, 0), (0, neg, 0)]
+    elif aim == 'down':
+        points = [(neg, 0, 0), (pos, 0, 0), (0, -size, 0), (neg, 0, 0)]
 
-
+    knots = [1, 2, 3, 4]
+    if points:
+        ctrl = pmc.curve(degree=1, p=points, k=knots, name=name)
+        return ctrl
+    else:
+        return 'please supply an aim: up, down, left or right'
 
 
 
