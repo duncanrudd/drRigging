@@ -32,20 +32,18 @@ def connectJoints():
             driver.out_rotate[index].connect(j.r, f=1)
             driver.out_scale.connect(j.s, f=1)
 
+def connectFaceElemsInComboRig(comboRigPath):
+    cmds.file(new=1, force=1)
+    cmds.file(comboRigPath, o=1)
+    connectJoints()
+
 ##----------------------------------------------------------------------------------------------------------------------
 #
 # IMPORTING AND CONNECTING FACE RIG
 #
 ##----------------------------------------------------------------------------------------------------------------------
-def mergeRig():
-    filePath = cmds.file(q=1, l=1)[0].rsplit('/', 1)[0]
-    fileName = None
-    try:
-        fileName = [f for f in os.listdir(filePath) if os.path.isfile(os.path.join(filePath, f)) and 'RIG_face.ma' in f][0]
-    except:
-        raise RuntimeError('No RIG_face.ma file found in this directory: %s' % filePath)
-    cmds.file(fileName, i=1, namespace='face')
-
+def mergeRig(faceRigPath):
+    cmds.file(faceRigPath, i=1, namespace='face')
     pmc.namespace(removeNamespace='face', mergeNamespaceWithRoot=1)
 
 def getInputs():
@@ -69,6 +67,12 @@ def connectRigs():
     parents = getParents()
     for p in parents:
         p.setParent(pmc.PyNode(p.rigParent.get()))
+
+def installFaceRigIntoMainRig(faceRigPath,mainRigPath):
+    cmds.file(new=1, force=1)
+    cmds.file(mainRigPath, o=1)
+    mergeRig(faceRigPath)
+    connectRigs()
 
 ##----------------------------------------------------------------------------------------------------------------------
 #
@@ -151,24 +155,19 @@ for node in pmc.selected():
 # IMPORTING FACE JOINTS AND LOADING WEIGHTS
 #
 ##----------------------------------------------------------------------------------------------------------------------
-def mergeJoints():
-    filePath = cmds.file(q=1, l=1)[0].rsplit('/', 1)[0]
-    fileName = None
-    try:
-        fileName = [f for f in os.listdir(filePath) if os.path.isfile(os.path.join(filePath, f)) and 'SKIN_face.ma' in f][0]
-    except:
-        raise RuntimeError('No SKIN_face.ma file found in this directory: %s' % filePath)
-    cmds.file(fileName, i=1, namespace='face')
+def mergeJoints(faceSkinPath):
+
+    cmds.file(faceSkinPath, i=1, namespace='face')
     for node in pmc.ls('face:*'):
         try:
-            node.setParent('joints_grp')
+            node.setParent('Root_Out_Jnt')
         except:
             pass
     pmc.namespace(removeNamespace='face', mergeNamespaceWithRoot=1)
 
-def loadWeights():
-    filePath = cmds.file(q=1, l=1)[0].rsplit('/', 1)[0]
-    files = [f for f in os.listdir(filePath) if os.path.isfile(os.path.join(filePath, f)) and 'faceWeights.json' in f]
+def loadWeights(weightsPath):
+
+    files = [f for f in os.listdir(weightsPath) if os.path.isfile(os.path.join(weightsPath, f)) and 'faceWeights.json' in f]
 
     for f in files:
         mesh = None
@@ -186,7 +185,7 @@ def loadWeights():
 
         # Get list of joints from weights file
         weights = None
-        with open(os.path.join(filePath, f), 'r') as jsonFile:
+        with open(os.path.join(weightsPath, f), 'r') as jsonFile:
           weights = json.load(jsonFile)
 
         # Make sure joints from weights file are added to skinCluster
@@ -208,3 +207,9 @@ def loadWeights():
             keys = [key for key in weights[v].keys() if key != 'null_jnt']
             values = [weights[v][key] for key in keys]
             pmc.skinPercent(skin, '%s.vtx[%s]' % (mesh, v), transformValue=list(zip(keys, values)))
+
+def installFaceSkinIntoMainSkin(faceSkinPath,mainSkinPath,weightsPath):
+    cmds.file(new=1, force=1)
+    cmds.file(mainSkinPath, o=1)
+    mergeJoints(faceSkinPath)
+    loadWeights(weightsPath)
