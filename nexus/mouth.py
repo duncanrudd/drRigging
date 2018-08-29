@@ -220,9 +220,7 @@ def buildTweaks(topCrv, btmCrv, root, tangents, numTweaks=7, name='mouth'):
     
     for p in range(len(points)):
         points[p].connect(crv.controlPoints[p])
-        btmPoints[p].connect(btmCrv.controlsPoints[p])                                
-        # Make a degree 2 curve with points at each tweak location plus an extra point at each end which sits halfway
-        # between the corner tweakers and the corner tangents
+        btmPoints[p].connect(btmCrv.controlsPoints[p])
     
 
 
