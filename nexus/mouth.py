@@ -155,15 +155,16 @@ def buildBaseRig(name='mouth'):
     p8.output.connect(btmCrv.controlPoints[5])
     p7.output.connect(btmCrv.controlPoints[6])
 
-def buildTweaks(crv, root, tangents, numTweaks=7, name='mouth'):
-    tweakCrv = curveUtils.curveBetweenPoints(start=(-10,0,0), end=(10,0,0), degree=2, numPoints=numTweaks, name='%s_T_tweak_crv' % name)
+def buildTweaks(topCrv, btmCrv, root, tangents, numTweaks=7, name='mouth'):
+    tweakCrv_T = curveUtils.curveBetweenPoints(start=(-10,0,0), end=(10,0,0), degree=2, numPoints=numTweaks, name='%s_T_tweak_crv' % name)
+    tweakCrv_B = curveUtils.curveBetweenPoints(start=(-10,0,0), end=(10,0,0), degree=2, numPoints=numTweaks, name='%s_B_tweak_crv' % name)
     # Create motions path nodes
     ctrls = []
     points=[]
     for i in range(numTweaks):
         num = str(i+1).zfill(2)
         mp = pmc.createNode('motionPath', name='%s_T_%s_tweakMotionPath_utl' % (name, num))
-        crv.worldSpace[0].connect(mp.geometryPath)
+        topCrv.worldSpace[0].connect(mp.geometryPath)
         mp.uValue.set(1.0 / (numTweaks-1) * i)
         bfr = pmc.group(empty=1, name='%s_tweak_%s_bufferSrt' % (name, num))
         ctrl = controls.triControl(size = configDict['radius']*.15, aim='up', name='%s_tweak_%s_ctrl' % (name, num))
@@ -178,15 +179,48 @@ def buildTweaks(crv, root, tangents, numTweaks=7, name='mouth'):
         mp.fractionMode.set(1)
         ctrls.append(ctrl)
         d = coreUtils.decomposeMatrix(ctrl.worldMatrix[0], name='%s_tweak_%s_mtx2Srt_utl' % (name, num))
+        if i==(numTweaks-1):
+            tanMult = coreUtils.convert(tangents[1].input1, 0.5, name=%s_T_tweakInTan_utl' % name)
+            p = coreUtils.pointMatrixMult(tanMult.output, ctrl.worldMatrix[0], name='%s_T_tweakInTanPos_%s_utl' % name)
+            points.append(p.output)                                        
         points.append(d.outputTranslate)                                       
         if i==0:
             tanMult = coreUtils.convert(tangents[0].input1, 0.5, name=%s_T_tweakOutTan_utl' % name)
             p = coreUtils.pointMatrixMult(tanMult.output, ctrl.worldMatrix[0], name='%s_T_tweakOutTanPos_%s_utl' % name)
             points.append(p.output)                           
-        elif i==(numTweaks-1):
-            tanMult = coreUtils.convert(tangents[1].input1, 0.5, name=%s_T_tweakInTan_utl' % name)
-            p = coreUtils.pointMatrixMult(tanMult.output, ctrl.worldMatrix[0], name='%s_T_tweakInTanPos_%s_utl' % name)
-            points.append(p.output)
+    btmPoints = [points[0]]    
+    for i in range(numTweaks)[1:-2]:
+        num = str(i+numTweaks).zfill(2)
+        mp = pmc.createNode('motionPath', name='%s_B_%s_tweakMotionPath_utl' % (name, num))
+        btmCrv.worldSpace[0].connect(mp.geometryPath)
+        mp.uValue.set(1.0 / (numTweaks-1) * i)
+        bfr = pmc.group(empty=1, name='%s_tweak_%s_bufferSrt' % (name, num))
+        ctrl = controls.triControl(size = configDict['radius']*.15, aim='down', name='%s_tweak_%s_ctrl' % (name, num))
+        ctrl.setParent(bfr)
+        bfrLocalPos = coreUtils.pointMatrixMult(mp.allCoordinates, root.worldInverseMatrix[0], name='%s_tweakLocalPos_%s_utl' % (name, num)
+        bfrLocalPos.output.connect(bfr.t)
+        bfrAngle = pmc.creatNode('angleBetween', name='%s_tweakAngle_%s_utl' % (name, num))
+        bfrLocalPos.outputX.connect(bfrAngle.input1X)
+        bfrLocalPos.outputZ.connect(bfrAngle.input1Z)
+        bfrAngle.input2.set((0,0,1))
+        bfrAngle.eulerY.connect(bfr.ry)
+        mp.fractionMode.set(1)
+        ctrls.append(ctrl)
+        d = coreUtils.decomposeMatrix(ctrl.worldMatrix[0], name='%s_tweak_%s_mtx2Srt_utl' % (name, num))
+        if i==(numTweaks-2):
+            tanMult = coreUtils.convert(tangents[1].input1, -0.5, name=%s_T_tweakInTan_utl' % name)
+            p = coreUtils.pointMatrixMult(tanMult.output, ctrl.worldMatrix[0], name='%s_B_tweakInTanPos_%s_utl' % name)
+            btmPoints.append(p.output)                                        
+        btmPoints.append(d.outputTranslate)
+        if i==1:
+            tanMult = coreUtils.convert(tangents[0].input1, -0.5, name=%s_B_tweakOutTan_utl' % name)
+            p = coreUtils.pointMatrixMult(tanMult.output, ctrl.worldMatrix[0], name='%s_B_tweakOutTanPos_%s_utl' % name)
+            btmPoints.append(p.output)
+    btmPoints.append(points[-1])
+    
+    for p in range(len(points)):
+        points[p].connect(crv.controlPoints[p])
+        btmPoints[p].connect(btmCrv.controlsPoints[p])                                
         # Make a degree 2 curve with points at each tweak location plus an extra point at each end which sits halfway
         # between the corner tweakers and the corner tangents
     
