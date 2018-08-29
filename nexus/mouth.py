@@ -155,17 +155,26 @@ def buildBaseRig(name='mouth'):
     p8.output.connect(btmCrv.controlPoints[5])
     p7.output.connect(btmCrv.controlPoints[6])
 
-def buildTweaks(crv, numTweaks=7, name='mouth'):
+def buildTweaks(crv, numTweaks=7, root, name='mouth'):
     # Create motions path nodes
-    mpNodes = []
+    ctrls = []
     for i in range(numTweaks):
         num = str(i+1).zfill(2)
         mp = pmc.createNode('motionPath', name='%s_T_%s_tweakMotionPath_utl' % (name, num))
         crv.worldSpace[0].connect(mp.geometryPath)
         mp.uValue.set(1.0 / (numTweaks-1) * i)
-        loc = pmc.spaceLocator()
-        mp.allCoordinates.connect(loc.t)
+        bfr = pmc.group(empty=1, name='%s_tweak_%s_bufferSrt' % (name, num))
+        ctrl = controls.triControl(size = configDict['radius']*.15, aim='up', name='%s_tweak_%s_ctrl' % (name, num))
+        ctrl.setParent(bfr)
+        bfrLocalPos = coreUtils.pointMatrixMult(mp.allCoordinates, root.worldInverseMatrix[0], name='%s_tweakLocalPos_%s_utl' % (name, num)
+        bfrLocalPos.output.connect(bfr.t)
+        bfrAngle = pmc.creatNode('angleBetween', name='%s_tweakAngle_%s_utl' % (name, num))
+        bfrLocalPos.outputX.connect(bfrAngle.input1X)
+        bfrLocalPos.outputZ.connect(bfrAngle.input1Z)
+        bfrAngle.input2.set((0,0,1))
+        bfrAngle.eulerY.connect(bfr.ry)
         mp.fractionMode.set(1)
+        ctrls.append(ctrl)
 
         # Make a degree 2 curve with points at each tweak location plus an extra point at each end which sits halfway
         # between the corner tweakers and the corner tangents
