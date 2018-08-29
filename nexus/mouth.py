@@ -221,11 +221,3 @@ def buildTweaks(topCrv, btmCrv, root, tangents, numTweaks=7, name='mouth'):
     for p in range(len(points)):
         points[p].connect(crv.controlPoints[p])
         btmPoints[p].connect(btmCrv.controlsPoints[p])
-    
-
-
-
-
-
-
-
