@@ -30,7 +30,13 @@ def connectJoints():
             index = j.jointIndex.get()
             driver.out_translate[index].connect(j.t, f=1)
             driver.out_rotate[index].connect(j.r, f=1)
-            driver.out_scale.connect(j.s, f=1)
+            try:
+                if pmc.attributeQuery('out_scale', node=driver, usesMultiBuilder=1):
+                    driver.out_scale[index].connect(j.s, f=1)
+                else:
+                    driver.out_scale.connect(j.s, f=1)
+            except:
+                pass
 
 def connectFaceElemsInComboRig(comboRigPath):
     cmds.file(new=1, force=1)
@@ -67,10 +73,12 @@ def connectRigs():
     parents = getParents()
     for p in parents:
         p.setParent(pmc.PyNode(p.rigParent.get()))
+    pmc.sets('all_ctls_SEL', add='face_ctls_SEL')
 
 def installFaceRigIntoMainRig(faceRigPath,mainRigPath):
-    cmds.file(new=1, force=1)
-    cmds.file(mainRigPath, o=1)
+    if mainRigPath is not None:
+        cmds.file(new=1, force=1)
+        cmds.file(mainRigPath, o=1)
     mergeRig(faceRigPath)
     connectRigs()
 
@@ -158,11 +166,9 @@ for node in pmc.selected():
 def mergeJoints(faceSkinPath):
 
     cmds.file(faceSkinPath, i=1, namespace='face')
-    for node in pmc.ls('face:*'):
-        try:
-            node.setParent('Root_Out_Jnt')
-        except:
-            pass
+    parents = getParents()
+    for p in parents:
+        p.setParent(pmc.PyNode(p.rigParent.get()))
     pmc.namespace(removeNamespace='face', mergeNamespaceWithRoot=1)
 
 def loadWeights(weightsPath):
@@ -209,7 +215,8 @@ def loadWeights(weightsPath):
             pmc.skinPercent(skin, '%s.vtx[%s]' % (mesh, v), transformValue=list(zip(keys, values)))
 
 def installFaceSkinIntoMainSkin(faceSkinPath,mainSkinPath,weightsPath):
-    cmds.file(new=1, force=1)
-    cmds.file(mainSkinPath, o=1)
+    if mainSkinPath is not None:
+        cmds.file(new=1, force=1)
+        cmds.file(mainSkinPath, o=1)
     mergeJoints(faceSkinPath)
     loadWeights(weightsPath)
