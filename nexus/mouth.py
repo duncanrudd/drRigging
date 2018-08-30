@@ -8,12 +8,30 @@ reload(coreUtils)
 reload(controls)
 
 configDict = {
-    'radius':2,
+    'radius':5,
     'spread':30,
     'height':.25,
 }
 
-def buildBaseRig(name='mouth'):
+def addOutputAttrs(node):
+    try:
+        pmc.deleteAttr(node.mouth_translate)
+        pmc.deleteAttr(node.mouth_rotate)
+    except:
+        print 'attributes to delete not found'
+
+    pmc.select(node)
+    pmc.addAttr(ln='out_translate', at='double3', multi=1)
+    pmc.addAttr(ln='outTX', at='double', parent='out_translate')
+    pmc.addAttr(ln='outTY', at='double', parent='out_translate')
+    pmc.addAttr(ln='outTZ', at='double', parent='out_translate')
+
+    pmc.addAttr(ln='out_rotate', at='double3', multi=1)
+    pmc.addAttr(ln='outRX', at='doubleAngle', parent='out_rotate')
+    pmc.addAttr(ln='outRY', at='doubleAngle', parent='out_rotate')
+    pmc.addAttr(ln='outRZ', at='doubleAngle', parent='out_rotate')
+
+def buildBaseRig(name='mouth', numTweaks=7):
     '''
     Create the bezier setup with corner, top and bottom controls.
     Radius sets the distance from the spin pivots to the rig
@@ -21,12 +39,32 @@ def buildBaseRig(name='mouth'):
     '''
     # Base structure
     rootGrp = pmc.group(empty=1, name='%s_cmpnt' % name)
+    pmc.addAttr(rootGrp, ln='rigParent', dt='string')
+    rootGrp.rigParent.set('components_GRP')
+
     inputGrp = coreUtils.addChild(rootGrp, 'group', name='%s_input' % name)
+    pmc.select(inputGrp)
+    pmc.addAttr(ln='rigInputs', dt='string', multi=1)
     pmc.addAttr(inputGrp, at='matrix', ln='head_in_mtx')
     pmc.addAttr(inputGrp, at='matrix', ln='jaw_in_mtx')
+
     controlsGrp = coreUtils.addChild(rootGrp, 'group', name='%s_controls' % name)
+    pmc.select(controlsGrp)
+    pmc.addAttr(ln='rigInputs', dt='string', multi=1)
+    controlsGrp.rigInputs[0].set('options_CTL.all_ctls_vis>>visibility')
+
     rigGrp = coreUtils.addChild(rootGrp, 'group', name='%s_rig' % name)
+    rigGrp.visibility.set(0)
+
     outputGrp = coreUtils.addChild(rootGrp, 'group', name='%s_output' % name)
+    addOutputAttrs(outputGrp)
+    pmc.addAttr(ln='out_scale', at='double3')
+    pmc.addAttr(ln='outSX', at='double', parent='out_scale')
+    pmc.addAttr(ln='outSY', at='double', parent='out_scale')
+    pmc.addAttr(ln='outSZ', at='double', parent='out_scale')
+
+    pmc.addAttr(outputGrp, ln='outputType', dt='string')
+    outputGrp.outputType.set('mouth')
 
     # Config node
     config = coreUtils.addChild(controlsGrp, 'group', name='%s_config' % name)
@@ -41,9 +79,21 @@ def buildBaseRig(name='mouth'):
 
     # Base srts
     rootSrt = coreUtils.addChild(controlsGrp, 'group', name='%s_root_srt' % name)
+    headSrt = coreUtils.decomposeMatrix(inputGrp.head_in_mtx, name='%s_head_in_mtx2Srt_utl' % name)
+    coreUtils.connectDecomposedMatrix(headSrt, rootSrt)
+    headSrt.outputScale.connect(outputGrp.mouth_scale)
+
     centreSrt = coreUtils.addChild(rootSrt, 'group', name='%s_centre_srt' % name)
     negScaleSrt = coreUtils.addChild(centreSrt, 'group', name='%s_negScale_srt' % name)
     negScaleSrt.sx.set(-1)
+
+    # Set up jaw blending stuff
+    jawOffset = pmc.createNode('composeMatrix', name='%s_jawOffsetMtx_utl' % name)
+    jawResultMtx = pmc.createNode('multMatrix', name='%s_jawResultMtx_utl' % name)
+    jawOffset.outputMatrix.connect(jawResultMtx.matrixIn[0])
+    inputGrp.jaw_in_mtx.connect(jawResultMtx.matrixIn[1])
+    centreSrt.worldInverseMatrix[0].connect(jawResultMtx.matrixIn[2])
+    jawSrt = coreUtils.decomposeMatrix(jawResultMtx.matrixSum, name='%s_jawResultMtx2Srt_utl' % name)
 
     # Spin srt + Ctrl structure
     ctrls = []
@@ -55,6 +105,7 @@ def buildBaseRig(name='mouth'):
         bufferSrt = coreUtils.addChild(spinSrt, 'group', name='%s_%s_ctrlBufferSrt' % (name, i))
         negSrt = coreUtils.addChild(bufferSrt, 'group', name='%s_%s_xNegSrt' % (name, i))
         ctrl = controls.triCtrl(size=config.radius.get()*.2, aim=aimDict[i], name='%s_%s_ctrl' % (name, i))
+        pmc.addAttr(ctrl, ln='follow_jaw', minValue=0.0, maxValue=1.0, k=1, h=0, at='double')
         ctrl.setParent(negSrt)
         config.radius.connect(bufferSrt.tz)
         if i == 'T':
@@ -70,6 +121,11 @@ def buildBaseRig(name='mouth'):
         spinAmount = coreUtils.divide(ctrl.tx, spinFac.output, name='%s_%s_spinAmount_utl' % (name, i))
         spinConv = coreUtils.convert(spinAmount.outputX, 6.283, name='%s_%s_spin_utl' % (name, i))
 
+        if i == 'R':
+            negScaleSrt.setParent(constSrt)
+            spinSrt.setParent(negScaleSrt)
+            spinSrt.s.set(1,1,1)
+            spinSrt.r.set(0,0,0)
         if i == 'L' or i == 'R':
             spinOffset = pmc.createNode('animBlendNodeAdditiveDA', name='%s_%s_spinOffset_utl' % (name, i))
             spinConv.output.connect(spinOffset.inputA)
@@ -78,14 +134,14 @@ def buildBaseRig(name='mouth'):
         else:
             spinConv.output.connect(spinSrt.ry)
 
-        if i == 'R':
-            constSrt.setParent(negScaleSrt)
-            constSrt.s.set((1,1,1))
-            constSrt.ry.set(0)
+        # set up jaw blending
+        jawBlend = coreUtils.pairBlend((0,0,0), (0,0,0), jawSrt.outputTranslate, jawSrt.outputRotate, name='%s_%s_jawBlend_utl' % (name, i), blendAttr=ctrl.follow_jaw)
+        jawBlend.outTranslate.connect(constSrt.t)
+        jawBlend.outRotate.connect(constSrt.r)
+
         ctrls.append(ctrl)
 
     # Distance nodes for auto scaling of tangents
-    headSrt = coreUtils.decomposeMatrix(inputGrp.head_in_mtx, name='%s_head_in_mtx2Srt_utl' % name)
     dist_R_T = coreUtils.distanceBetweenNodes(ctrls[0], ctrls[1], name='%s_dist_R_T_utl' % name)
     scaledDist_R_T = coreUtils.divide(dist_R_T.distance, headSrt.outputScaleX, name='%s_scaledDist_R_T_utl' % name)
 
@@ -98,16 +154,20 @@ def buildBaseRig(name='mouth'):
     dist_L_B = coreUtils.distanceBetweenNodes(ctrls[2], ctrls[3], name='%s_dist_L_B_utl' % name)
     scaledDist_L_B = coreUtils.divide(dist_L_B.distance, headSrt.outputScaleX, name='%s_scaledDist_L_B_utl' % name)
 
+    scaledHeight = coreUtils.divide(config.height, headSrt.outputScaleY, name='%s_scaledHeight_utl' % name)
+
 
     # Build curves
     points = [(0,0,0) for i in range(7)]
     knots = [0,0,0,1,1,1,2,2,2]
     topCrv = pmc.curve(d=3, p=points, k=knots, name='%s_T_macro_crv' % name)
+    topCrv.setParent(rigGrp)
     btmCrv = pmc.curve(d=3, p=points, k=knots, name='%s_B_macro_crv' % name)
+    btmCrv.setParent(rigGrp)
 
     p1 = coreUtils.pointMatrixMult((0,0,0), ctrls[0].worldMatrix[0], name='%s_R_pos_utl' % name)
 
-    p2TanLen = coreUtils.convert(headSrt.outputScaleX, configDict['height'], name='%s_R_outTan_len_utl' % name)
+    p2TanLen = coreUtils.multiplyDouble(headSrt.outputScaleY, scaledHeight.outputX, name='%s_R_outTan_len_utl' % name)
     p2 = coreUtils.pointMatrixMult((0,0,0), ctrls[0].worldMatrix[0], name='%s_R_outTan_pos_utl' % name)
     p2TanLen.output.connect(p2.input1Y)
 
@@ -124,7 +184,7 @@ def buildBaseRig(name='mouth'):
 
     p7 = coreUtils.pointMatrixMult((0,0,0), ctrls[2].worldMatrix[0], name='%s_L_pos_utl' % name)
 
-    p8TanLen = coreUtils.convert(headSrt.outputScaleX, -configDict['height'], name='%s_L_outTan_len_utl' % name)
+    p8TanLen = coreUtils.convert(p2TanLen.output, -1, name='%s_L_outTan_len_utl' % name)
     p8 = coreUtils.pointMatrixMult((0,0,0), ctrls[2].worldMatrix[0], name='%s_L_outTan_pos_utl' % name)
     p8TanLen.output.connect(p8.input1Y)
 
@@ -155,69 +215,155 @@ def buildBaseRig(name='mouth'):
     p8.output.connect(btmCrv.controlPoints[5])
     p7.output.connect(btmCrv.controlPoints[6])
 
-def buildTweaks(topCrv, btmCrv, root, tangents, numTweaks=7, name='mouth'):
-    tweakCrv_T = curveUtils.curveBetweenPoints(start=(-10,0,0), end=(10,0,0), degree=2, numPoints=numTweaks, name='%s_T_tweak_crv' % name)
-    tweakCrv_B = curveUtils.curveBetweenPoints(start=(-10,0,0), end=(10,0,0), degree=2, numPoints=numTweaks, name='%s_B_tweak_crv' % name)
+    returnDict = {
+        'root':rootSrt,
+        'topCrv':topCrv,
+        'btmCrv':btmCrv,
+        'tangents':[p2, p8],
+        'rigGrp':rigGrp
+    }
+
+    ##------------------------------TWEAKS-----------------------------------------##
+
+    tweakCrv_T = curveUtils.curveBetweenNodes(start=(-10,0,0), end=(10,0,0), degree=2, numCVs=numTweaks+2, name='%s_T_tweak_crv' % name)
+    tweakCrv_T.setParent(rigGrp)
+    tweakCrv_B = curveUtils.curveBetweenNodes(start=(-10,0,0), end=(10,0,0), degree=2, numCVs=numTweaks+2, name='%s_B_tweak_crv' % name)
+    tweakCrv_B.setParent(rigGrp)
     # Create motions path nodes
-    ctrls = []
+    tweakCtrls = []
     points=[]
+    tweakGrp = coreUtils.addChild(rootSrt, 'group', name='%s_tweakControls_hrc' % name)
     for i in range(numTweaks):
         num = str(i+1).zfill(2)
         mp = pmc.createNode('motionPath', name='%s_T_%s_tweakMotionPath_utl' % (name, num))
         topCrv.worldSpace[0].connect(mp.geometryPath)
         mp.uValue.set(1.0 / (numTweaks-1) * i)
         bfr = pmc.group(empty=1, name='%s_tweak_%s_bufferSrt' % (name, num))
-        ctrl = controls.triControl(size = configDict['radius']*.15, aim='up', name='%s_tweak_%s_ctrl' % (name, num))
+        aim = 'up'
+        if i==numTweaks-1 or i == 0:
+            aim='left'
+        ctrl = controls.triCtrl(size = configDict['radius']*.075, aim=aim, name='%s_tweak_%s_ctrl' % (name, num))
         ctrl.setParent(bfr)
-        bfrLocalPos = coreUtils.pointMatrixMult(mp.allCoordinates, root.worldInverseMatrix[0], name='%s_tweakLocalPos_%s_utl' % (name, num)
+        bfrLocalPos = coreUtils.pointMatrixMult(mp.allCoordinates, rootSrt.worldInverseMatrix[0], name='%s_tweakLocalPos_%s_utl' % (name, num))
         bfrLocalPos.output.connect(bfr.t)
-        bfrAngle = pmc.creatNode('angleBetween', name='%s_tweakAngle_%s_utl' % (name, num))
-        bfrLocalPos.outputX.connect(bfrAngle.input1X)
-        bfrLocalPos.outputZ.connect(bfrAngle.input1Z)
-        bfrAngle.input2.set((0,0,1))
+        bfrAngle = pmc.createNode('angleBetween', name='%s_tweakAngle_%s_utl' % (name, num))
+        bfrLocalPos.outputX.connect(bfrAngle.vector2X)
+        bfrLocalPos.outputZ.connect(bfrAngle.vector2Z)
+        bfrAngle.vector1.set((0,0,1))
         bfrAngle.eulerY.connect(bfr.ry)
         mp.fractionMode.set(1)
-        ctrls.append(ctrl)
+        tweakCtrls.append(ctrl)
         d = coreUtils.decomposeMatrix(ctrl.worldMatrix[0], name='%s_tweak_%s_mtx2Srt_utl' % (name, num))
+        if d.outputTranslateX.get() < 0.0:
+            bfr.sx.set(-1)
         if i==(numTweaks-1):
-            tanMult = coreUtils.convert(tangents[1].input1, 0.5, name=%s_T_tweakInTan_utl' % name)
-            p = coreUtils.pointMatrixMult(tanMult.output, ctrl.worldMatrix[0], name='%s_T_tweakInTanPos_%s_utl' % name)
+            tanMult = coreUtils.convert(p8.input1, -0.5, name='%s_T_tweakInTan_utl' % name)
+            p = coreUtils.pointMatrixMult(tanMult.output, ctrl.worldMatrix[0], name='%s_T_tweakInTanPos_%s_utl' % (name, num))
             points.append(p.output)                                        
         points.append(d.outputTranslate)                                       
         if i==0:
-            tanMult = coreUtils.convert(tangents[0].input1, 0.5, name=%s_T_tweakOutTan_utl' % name)
-            p = coreUtils.pointMatrixMult(tanMult.output, ctrl.worldMatrix[0], name='%s_T_tweakOutTanPos_%s_utl' % name)
-            points.append(p.output)                           
+            tanMult = coreUtils.convert(p2.input1, 0.5, name='%s_T_tweakOutTan_utl' % name)
+            p = coreUtils.pointMatrixMult(tanMult.output, ctrl.worldMatrix[0], name='%s_T_tweakOutTanPos_%s_utl' % (name, num))
+            points.append(p.output)
+        bfr.setParent(tweakGrp)
     btmPoints = [points[0]]    
-    for i in range(numTweaks)[1:-2]:
+    for i in range(numTweaks)[1:-1]:
         num = str(i+numTweaks).zfill(2)
         mp = pmc.createNode('motionPath', name='%s_B_%s_tweakMotionPath_utl' % (name, num))
         btmCrv.worldSpace[0].connect(mp.geometryPath)
         mp.uValue.set(1.0 / (numTweaks-1) * i)
         bfr = pmc.group(empty=1, name='%s_tweak_%s_bufferSrt' % (name, num))
-        ctrl = controls.triControl(size = configDict['radius']*.15, aim='down', name='%s_tweak_%s_ctrl' % (name, num))
+        ctrl = controls.triCtrl(size = configDict['radius']*.075, aim='down', name='%s_tweak_%s_ctrl' % (name, num))
         ctrl.setParent(bfr)
-        bfrLocalPos = coreUtils.pointMatrixMult(mp.allCoordinates, root.worldInverseMatrix[0], name='%s_tweakLocalPos_%s_utl' % (name, num)
+        bfrLocalPos = coreUtils.pointMatrixMult(mp.allCoordinates, rootSrt.worldInverseMatrix[0], name='%s_tweakLocalPos_%s_utl' % (name, num))
         bfrLocalPos.output.connect(bfr.t)
-        bfrAngle = pmc.creatNode('angleBetween', name='%s_tweakAngle_%s_utl' % (name, num))
-        bfrLocalPos.outputX.connect(bfrAngle.input1X)
-        bfrLocalPos.outputZ.connect(bfrAngle.input1Z)
-        bfrAngle.input2.set((0,0,1))
+        bfrAngle = pmc.createNode('angleBetween', name='%s_tweakAngle_%s_utl' % (name, num))
+        bfrLocalPos.outputX.connect(bfrAngle.vector2X)
+        bfrLocalPos.outputZ.connect(bfrAngle.vector2Z)
+        bfrAngle.vector1.set((0,0,1))
         bfrAngle.eulerY.connect(bfr.ry)
         mp.fractionMode.set(1)
-        ctrls.append(ctrl)
+        tweakCtrls.append(ctrl)
         d = coreUtils.decomposeMatrix(ctrl.worldMatrix[0], name='%s_tweak_%s_mtx2Srt_utl' % (name, num))
-        if i==(numTweaks-2):
-            tanMult = coreUtils.convert(tangents[1].input1, -0.5, name=%s_T_tweakInTan_utl' % name)
-            p = coreUtils.pointMatrixMult(tanMult.output, ctrl.worldMatrix[0], name='%s_B_tweakInTanPos_%s_utl' % name)
-            btmPoints.append(p.output)                                        
-        btmPoints.append(d.outputTranslate)
+        if d.outputTranslateX.get() < 0.0:
+            bfr.sx.set(-1)
         if i==1:
-            tanMult = coreUtils.convert(tangents[0].input1, -0.5, name=%s_B_tweakOutTan_utl' % name)
-            p = coreUtils.pointMatrixMult(tanMult.output, ctrl.worldMatrix[0], name='%s_B_tweakOutTanPos_%s_utl' % name)
+            tanMult = coreUtils.convert(p2.input1, -0.5, name='%s_B_tweakOutTan_utl' % name)
+            p = coreUtils.pointMatrixMult(tanMult.output, tweakCtrls[0].worldMatrix[0], name='%s_B_tweakOutTanPos_%s_utl' % (name, num))
             btmPoints.append(p.output)
+
+        btmPoints.append(d.outputTranslate)
+        if i==(numTweaks-2):
+            tanMult = coreUtils.convert(p8.input1, 0.5, name='%s_T_tweakInTan_utl' % name)
+            p = coreUtils.pointMatrixMult(tanMult.output, tweakCtrls[numTweaks-1].worldMatrix[0], name='%s_B_tweakInTanPos_%s_utl' % (name, num))
+            btmPoints.append(p.output)
+        bfr.setParent(rootSrt)
     btmPoints.append(points[-1])
     
     for p in range(len(points)):
-        points[p].connect(crv.controlPoints[p])
-        btmPoints[p].connect(btmCrv.controlsPoints[p])
+        points[p].connect(tweakCrv_T.controlPoints[p])
+    for p in range(len(btmPoints)):
+        btmPoints[p].connect(tweakCrv_B.controlPoints[p])
+
+    ctrlSet = pmc.sets(ctrls + tweakCtrls, name='%s_ctls_SEL' % name)
+
+
+    # CLEAN UP
+    coreUtils.attrCtrl(nodeList=[ctrls[0], ctrls[2]], attrList=['sx', 'sz', 'visibility'])
+    coreUtils.attrCtrl(nodeList=[ctrls[1], ctrls[3]], attrList=['sy', 'sz', 'visibility'])
+    coreUtils.attrCtrl(nodeList=tweakCtrls, attrList=['rx', 'ry', 'rz', 'sx', 'sy', 'sz', 'visibility'])
+    coreUtils.attrCtrl(nodeList=ctrls + tweakCtrls, attrList=['aiRenderCurve', 'aiCurveWidth', 'aiSampleRate', 'aiCurveShaderR', 'aiCurveShaderG', 'aiCurveShaderB'])
+
+def createJoints(topCrv, btmCrv, outputNode, rootSrt, numJoints=16, name='mouth', connect=1):
+    addOutputAttrs(outputNode)
+    joints = []
+    # top joints
+    for i in range((numJoints/2)+1):
+        num = str(i+1).zfill(2)
+        mp = pmc.createNode('motionPath', name='%s_T_output_%s_motionPath_utl' % (name, num))
+        topCrv.worldSpace[0].connect(mp.geometryPath)
+        mp.fractionMode.set(1)
+        mp.uValue.set((1.0 / (numJoints/2))*i)
+        vp = coreUtils.pointMatrixMult(mp.allCoordinates, rootSrt.worldInverseMatrix[0], name='%s_T_localOutputPos_%s_utl' % (name, num))
+        ang = pmc.createNode('angleBetween', name='%s_T_outputAngle_%s_utl' % (name, num))
+        vp.outputX.connect(ang.vector2X)
+        vp.outputZ.connect(ang.vector2Z)
+        ang.vector1.set((0,0,1))
+
+        vp.output.connect(outputNode.mouth_translate[i])
+        ang.eulerY.connect(outputNode.mouth_rotate[i].outRY)
+
+        pmc.select(None)
+        j = pmc.joint(name='%s_T_%s_Out_Jnt' % (name, num))
+        joints.append(j)
+
+    # bottom joints
+    for i in range((numJoints/2)-1):
+        num = str(i+1).zfill(2)
+        mp = pmc.createNode('motionPath', name='%s_B_output_%s_motionPath_utl' % (name, num))
+        btmCrv.worldSpace[0].connect(mp.geometryPath)
+        mp.fractionMode.set(1)
+        mp.uValue.set((1.0 / (numJoints/2))*(i+1))
+        vp = coreUtils.pointMatrixMult(mp.allCoordinates, rootSrt.worldInverseMatrix[0], name='%s_B_localOutputPos_%s_utl' % (name, num))
+        ang = pmc.createNode('angleBetween', name='%s_B_outputAngle_%s_utl' % (name, num))
+        vp.outputX.connect(ang.vector2X)
+        vp.outputZ.connect(ang.vector2Z)
+        ang.vector1.set((0,0,1))
+
+        vp.output.connect(outputNode.mouth_translate[i+((numJoints/2)+1)])
+        ang.eulerY.connect(outputNode.mouth_rotate[i+((numJoints/2)+1)].outRY)
+
+        pmc.select(None)
+        j = pmc.joint(name='%s_B_%s_Out_Jnt' % (name, num))
+        joints.append(j)
+
+    for j in range(len(joints)):
+        joints[j].segmentScaleCompensate.set(0)
+        pmc.addAttr(joints[j], ln='jointIndex', at='short', k=0)
+        joints[j].jointIndex.set(j)
+        pmc.addAttr(joints[j], ln='rigType', dt='string')
+        pmc.addAttr(joints[j], ln='rigParent', dt='string')
+
+        if connect:
+            outputNode.mouth_translate[j].connect(joints[j].t)
+            outputNode.mouth_rotate[j].connect(joints[j].r)

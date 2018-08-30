@@ -202,7 +202,7 @@ def triCtrl(size=20.0, name='', aim='up'):
 
     '''
     points = []
-    pos = size * .33
+    pos = size * .5
     neg = pos * -1
     if aim == 'up':
         points = [(neg, 0, 0), (pos, 0, 0), (0, size, 0), (neg, 0, 0)]
