@@ -301,9 +301,23 @@ def buildBaseRig(name='mouth', numTweaks=7):
     coreUtils.attrCtrl(nodeList=tweakCtrls, attrList=['rx', 'ry', 'rz', 'sx', 'sy', 'sz', 'visibility'])
     coreUtils.attrCtrl(nodeList=ctrls + tweakCtrls, attrList=['aiRenderCurve', 'aiCurveWidth', 'aiSampleRate', 'aiCurveShaderR', 'aiCurveShaderG', 'aiCurveShaderB'])
 
-def createJoints(topCrv, btmCrv, outputNode, rootSrt, scaleSrt, numJoints=16, name='mouth', connect=1):
+def createJoints(topCrv, btmCrv, drvTopCrv, drvBtmCrv, outputNode, rootSrt, scaleSrt, numJoints=16, name='mouth', connect=1):
     addOutputAttrs(outputNode)
     joints = []
+    shape = pmc.listRelatives(drvTopCrv, c=1, s=1)[0]
+    topMPs = pmc.listConnections(shape, type='motionPath')
+    topCtrls = []
+    shape = pmc.listRelatives(drvBtmCrv, c=1, s=1)[0]
+    btmMPs = pmc.listConnections(shape, type='motionPath')
+    btmCtrls = []
+    for mp in topMPs:
+        vp = pmc.listConnections(mp, s=0, type='vectorProduct')[0]
+        bfr = pmc.listConnections(vp, s=0, type='transform')[0]
+        topCtrls.append(pmc.listRelatives(bfr, c=1, type='transform')[0])
+    for mp in btmMPs:
+        vp = pmc.listConnections(mp, s=0, type='vectorProduct')[0]
+        bfr = pmc.listConnections(vp, s=0, type='transform')[0]
+        btmCtrls.append(pmc.listRelatives(bfr, c=1, type='transform')[0])
     d = coreUtils.isDecomposed(rootSrt)
     # top joints
     for i in range((numJoints/2)+1):
@@ -312,9 +326,21 @@ def createJoints(topCrv, btmCrv, outputNode, rootSrt, scaleSrt, numJoints=16, na
         topCrv.worldSpace[0].connect(mp.geometryPath)
         mp.fractionMode.set(1)
         mp.uValue.set((1.0 / (numJoints/2))*i)
+
+        # To calculate blended rotation based on surrounding tweak controls:
+        rv = pmc.createNode('remapValue', name='%s_T_output_%s_rotationRemap_utl' % (name, num))
+        for j in range(len(topMPs)):
+            topMP = topMPs[j]
+            ctrl = topCtrls[j]
+            topMP.uValue.connect(rv.color[j].color_Position)
+            rv.color[j].color_Interp.set(1)
+            vp = coreUtils.matrixAxisToVector(ctrl.worldMatrix[0], axis='y', normalize=1, name=ctrl.name().replace('ctrl', 'mtxRow2_utl'))
+            vp.output.connect(rv.color[j].color_Color)
+        mp.uValue.connect(rv.inputValue)
+
         vecZ = coreUtils.minus([mp.allCoordinates, d.outputTranslate], name='%s_T_row3Vec_%s_utl' % (name, num))
         vpZ = coreUtils.normalizeVector(vecZ.output3D, name='%s_T_row3_%s_utl' % (name, num))
-        vpY = coreUtils.matrixAxisToVector(rootSrt, name='%s_T_row2_%s_utl' % (name, num), axis='y', normalize=1)
+        vpY = coreUtils.normalizeVector(rv.outColor, name='%s_T_row2_%s_utl' % (name, num))
         vpX = coreUtils.cross(vpY.output, vpZ.output, name='%s_T_row1_%s_utl' % (name, num), normalize=1)
         vMultX = coreUtils.multiply(vpX.output, scaleSrt.s, name='%s_T_row1Scaled_%s_utl' % (name, num))
         vMultY = coreUtils.multiply(vpY.output, scaleSrt.s, name='%s_T_row2Scaled_%s_utl' % (name, num))
@@ -334,9 +360,21 @@ def createJoints(topCrv, btmCrv, outputNode, rootSrt, scaleSrt, numJoints=16, na
         btmCrv.worldSpace[0].connect(mp.geometryPath)
         mp.fractionMode.set(1)
         mp.uValue.set((1.0 / (numJoints/2))*(i+1))
+
+        # To calculate blended rotation based on surrounding tweak controls:
+        rv = pmc.createNode('remapValue', name='%s_B_output_%s_rotationRemap_utl' % (name, num))
+        for j in range(len(btmMPs)):
+            btmMP = btmMPs[j]
+            ctrl = btmCtrls[j]
+            btmMP.uValue.connect(rv.color[j].color_Position)
+            rv.color[j].color_Interp.set(1)
+            vp = coreUtils.matrixAxisToVector(ctrl.worldMatrix[0], axis='y', normalize=1, name=ctrl.name().replace('ctrl', 'mtxRow2_utl'))
+            vp.output.connect(rv.color[j].color_Color)
+        mp.uValue.connect(rv.inputValue)
+
         vecZ = coreUtils.minus([mp.allCoordinates, d.outputTranslate], name='%s_B_row3Vec_%s_utl' % (name, num))
         vpZ = coreUtils.normalizeVector(vecZ.output3D, name='%s_B_row3_%s_utl' % (name, num))
-        vpY = coreUtils.matrixAxisToVector(rootSrt, name='%s_B_row2_%s_utl' % (name, num), axis='y', normalize=1)
+        vpY = coreUtils.normalizeVector(rv.outColor, name='%s_T_row2_%s_utl' % (name, num))
         vpX = coreUtils.cross(vpY.output, vpZ.output, name='%s_B_row2_%s_utl' % (name, num), normalize=1)
         vMultX = coreUtils.multiply(vpX.output, scaleSrt.s, name='%s_B_row1Scaled_%s_utl' % (name, num))
         vMultY = coreUtils.multiply(vpY.output, scaleSrt.s, name='%s_B_row2Scaled_%s_utl' % (name, num))
