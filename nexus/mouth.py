@@ -15,21 +15,13 @@ configDict = {
 
 def addOutputAttrs(node):
     try:
-        pmc.deleteAttr(node.mouth_translate)
-        pmc.deleteAttr(node.mouth_rotate)
+        pmc.deleteAttr(node.outMatrix)
     except:
         print 'attributes to delete not found'
 
     pmc.select(node)
-    pmc.addAttr(ln='out_translate', at='double3', multi=1)
-    pmc.addAttr(ln='outTX', at='double', parent='out_translate')
-    pmc.addAttr(ln='outTY', at='double', parent='out_translate')
-    pmc.addAttr(ln='outTZ', at='double', parent='out_translate')
-
-    pmc.addAttr(ln='out_rotate', at='double3', multi=1)
-    pmc.addAttr(ln='outRX', at='doubleAngle', parent='out_rotate')
-    pmc.addAttr(ln='outRY', at='doubleAngle', parent='out_rotate')
-    pmc.addAttr(ln='outRZ', at='doubleAngle', parent='out_rotate')
+    pmc.addAttr(ln='outMatrix', at='matrix', multi=1)
+    #pmc.addAttr(ln='outMatrix', at='matrix', parent='outMatrix')
 
 def buildBaseRig(name='mouth', numTweaks=7):
     '''
@@ -58,10 +50,6 @@ def buildBaseRig(name='mouth', numTweaks=7):
 
     outputGrp = coreUtils.addChild(rootGrp, 'group', name='%s_output' % name)
     addOutputAttrs(outputGrp)
-    pmc.addAttr(ln='out_scale', at='double3')
-    pmc.addAttr(ln='outSX', at='double', parent='out_scale')
-    pmc.addAttr(ln='outSY', at='double', parent='out_scale')
-    pmc.addAttr(ln='outSZ', at='double', parent='out_scale')
 
     pmc.addAttr(outputGrp, ln='outputType', dt='string')
     outputGrp.outputType.set('mouth')
@@ -81,7 +69,6 @@ def buildBaseRig(name='mouth', numTweaks=7):
     rootSrt = coreUtils.addChild(controlsGrp, 'group', name='%s_root_srt' % name)
     headSrt = coreUtils.decomposeMatrix(inputGrp.head_in_mtx, name='%s_head_in_mtx2Srt_utl' % name)
     coreUtils.connectDecomposedMatrix(headSrt, rootSrt)
-    headSrt.outputScale.connect(outputGrp.mouth_scale)
 
     centreSrt = coreUtils.addChild(rootSrt, 'group', name='%s_centre_srt' % name)
     negScaleSrt = coreUtils.addChild(centreSrt, 'group', name='%s_negScale_srt' % name)
@@ -314,9 +301,10 @@ def buildBaseRig(name='mouth', numTweaks=7):
     coreUtils.attrCtrl(nodeList=tweakCtrls, attrList=['rx', 'ry', 'rz', 'sx', 'sy', 'sz', 'visibility'])
     coreUtils.attrCtrl(nodeList=ctrls + tweakCtrls, attrList=['aiRenderCurve', 'aiCurveWidth', 'aiSampleRate', 'aiCurveShaderR', 'aiCurveShaderG', 'aiCurveShaderB'])
 
-def createJoints(topCrv, btmCrv, outputNode, rootSrt, numJoints=16, name='mouth', connect=1):
+def createJoints(topCrv, btmCrv, outputNode, rootSrt, scaleSrt, numJoints=16, name='mouth', connect=1):
     addOutputAttrs(outputNode)
     joints = []
+    d = coreUtils.isDecomposed(rootSrt)
     # top joints
     for i in range((numJoints/2)+1):
         num = str(i+1).zfill(2)
@@ -324,14 +312,16 @@ def createJoints(topCrv, btmCrv, outputNode, rootSrt, numJoints=16, name='mouth'
         topCrv.worldSpace[0].connect(mp.geometryPath)
         mp.fractionMode.set(1)
         mp.uValue.set((1.0 / (numJoints/2))*i)
-        vp = coreUtils.pointMatrixMult(mp.allCoordinates, rootSrt.worldInverseMatrix[0], name='%s_T_localOutputPos_%s_utl' % (name, num))
-        ang = pmc.createNode('angleBetween', name='%s_T_outputAngle_%s_utl' % (name, num))
-        vp.outputX.connect(ang.vector2X)
-        vp.outputZ.connect(ang.vector2Z)
-        ang.vector1.set((0,0,1))
+        vecZ = coreUtils.minus([mp.allCoordinates, d.outputTranslate], name='%s_T_row3Vec_%s_utl' % (name, num))
+        vpZ = coreUtils.normalizeVector(vecZ.output3D, name='%s_T_row3_%s_utl' % (name, num))
+        vpY = coreUtils.matrixAxisToVector(rootSrt, name='%s_T_row2_%s_utl' % (name, num), axis='y', normalize=1)
+        vpX = coreUtils.cross(vpY.output, vpZ.output, name='%s_T_row1_%s_utl' % (name, num), normalize=1)
+        vMultX = coreUtils.multiply(vpX.output, scaleSrt.s, name='%s_T_row1Scaled_%s_utl' % (name, num))
+        vMultY = coreUtils.multiply(vpY.output, scaleSrt.s, name='%s_T_row2Scaled_%s_utl' % (name, num))
+        vMultZ = coreUtils.multiply(vpZ.output, scaleSrt.s, name='%s_T_row3Scaled_%s_utl' % (name, num))
+        mtx = coreUtils.matrixFromVectors(vMultX.output, vMultY.output, vMultZ.output, mp.allCoordinates, name='%s_T_outMtx_%s_utl' % (name, num))
 
-        vp.output.connect(outputNode.mouth_translate[i])
-        ang.eulerY.connect(outputNode.mouth_rotate[i].outRY)
+        mtx.output.connect(outputNode.outMatrix[i])
 
         pmc.select(None)
         j = pmc.joint(name='%s_T_%s_Out_Jnt' % (name, num))
@@ -344,14 +334,16 @@ def createJoints(topCrv, btmCrv, outputNode, rootSrt, numJoints=16, name='mouth'
         btmCrv.worldSpace[0].connect(mp.geometryPath)
         mp.fractionMode.set(1)
         mp.uValue.set((1.0 / (numJoints/2))*(i+1))
-        vp = coreUtils.pointMatrixMult(mp.allCoordinates, rootSrt.worldInverseMatrix[0], name='%s_B_localOutputPos_%s_utl' % (name, num))
-        ang = pmc.createNode('angleBetween', name='%s_B_outputAngle_%s_utl' % (name, num))
-        vp.outputX.connect(ang.vector2X)
-        vp.outputZ.connect(ang.vector2Z)
-        ang.vector1.set((0,0,1))
+        vecZ = coreUtils.minus([mp.allCoordinates, d.outputTranslate], name='%s_B_row3Vec_%s_utl' % (name, num))
+        vpZ = coreUtils.normalizeVector(vecZ.output3D, name='%s_B_row3_%s_utl' % (name, num))
+        vpY = coreUtils.matrixAxisToVector(rootSrt, name='%s_B_row2_%s_utl' % (name, num), axis='y', normalize=1)
+        vpX = coreUtils.cross(vpY.output, vpZ.output, name='%s_B_row2_%s_utl' % (name, num), normalize=1)
+        vMultX = coreUtils.multiply(vpX.output, scaleSrt.s, name='%s_B_row1Scaled_%s_utl' % (name, num))
+        vMultY = coreUtils.multiply(vpY.output, scaleSrt.s, name='%s_B_row2Scaled_%s_utl' % (name, num))
+        vMultZ = coreUtils.multiply(vpZ.output, scaleSrt.s, name='%s_B_row3Scaled_%s_utl' % (name, num))
+        mtx = coreUtils.matrixFromVectors(vMultX.output, vMultY.output, vMultZ.output, mp.allCoordinates, name='%s_B_outMtx_%s_utl' % (name, num))
 
-        vp.output.connect(outputNode.mouth_translate[i+((numJoints/2)+1)])
-        ang.eulerY.connect(outputNode.mouth_rotate[i+((numJoints/2)+1)].outRY)
+        print mtx.output.connect(outputNode.outMatrix[i+((numJoints/2)+1)])
 
         pmc.select(None)
         j = pmc.joint(name='%s_B_%s_Out_Jnt' % (name, num))
@@ -362,8 +354,8 @@ def createJoints(topCrv, btmCrv, outputNode, rootSrt, numJoints=16, name='mouth'
         pmc.addAttr(joints[j], ln='jointIndex', at='short', k=0)
         joints[j].jointIndex.set(j)
         pmc.addAttr(joints[j], ln='rigType', dt='string')
-        pmc.addAttr(joints[j], ln='rigParent', dt='string')
+        joints[j].rigType.set('mouth')
 
         if connect:
-            outputNode.mouth_translate[j].connect(joints[j].t)
-            outputNode.mouth_rotate[j].connect(joints[j].r)
+            d = coreUtils.decomposeMatrix(outputNode.outMatrix[j], name='%s_outMtx2Srt_%s_utl' % (name, str(j+1)))
+            coreUtils.connectDecomposedMatrix(d, joints[j])

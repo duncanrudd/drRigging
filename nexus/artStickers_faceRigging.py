@@ -28,15 +28,14 @@ def connectJoints():
         joints = getDrivenJoints(rigType)
         for j in joints:
             index = j.jointIndex.get()
-            driver.out_translate[index].connect(j.t, f=1)
-            driver.out_rotate[index].connect(j.r, f=1)
-            try:
-                if pmc.attributeQuery('out_scale', node=driver, usesMultiBuilder=1):
-                    driver.out_scale[index].connect(j.s, f=1)
-                else:
-                    driver.out_scale.connect(j.s, f=1)
-            except:
-                pass
+            m = pmc.createNode('multMatrix', name=j.name().replace('Out_Jnt', 'jntMtx_utl'))
+            driver.outMatrix[index].connect(m.matrixIn[0])
+            j.parentInverseMatrix[0].connect(m.matrixIn[1])
+            d = pmc.createNode('decomposeMatrix', name=j.name().replace('Out_Jnt', 'jntMtx2Srt_utl'))
+            m.matrixSum.connect(d.inputMatrix)
+            d.outputTranslate.connect(j.t)
+            d.outputRotate.connect(j.r)
+            d.outputScale.connect(j.s)
 
 def connectFaceElemsInComboRig(comboRigPath):
     cmds.file(new=1, force=1)
@@ -166,9 +165,9 @@ for node in pmc.selected():
 def mergeJoints(faceSkinPath):
 
     cmds.file(faceSkinPath, i=1, namespace='face')
-    parents = getParents()
-    for p in parents:
-        p.setParent(pmc.PyNode(p.rigParent.get()))
+    for j in pmc.ls('face:*', type='joint'):
+        j.setParent('Root_Out_Jnt')
+        pmc.disconnectAttr(j.getParent().s, j.inverseScale)
     pmc.namespace(removeNamespace='face', mergeNamespaceWithRoot=1)
 
 def loadWeights(weightsPath):
@@ -220,3 +219,38 @@ def installFaceSkinIntoMainSkin(faceSkinPath,mainSkinPath,weightsPath):
         cmds.file(mainSkinPath, o=1)
     mergeJoints(faceSkinPath)
     loadWeights(weightsPath)
+
+##----------------------------------------------------------------------------------------------------------------------
+#
+# UTILITIES
+#
+##----------------------------------------------------------------------------------------------------------------------
+
+def unMirrorMtx(mtx, name):
+    m = pmc.createNode('composeMatrix', name='%s_unMirrorMtx_utl' % name)
+    m.inputScaleX.set(-1)
+    mult = pmc.createNode('multMatrix', name='%s_mtx_utl' % name)
+    m.outputMatrix.connect(mult.matrixIn[0])
+    mtx.connect(mult.matrixIn[1])
+    return mult
+
+def exposeOutput(ctrl, outputNode, rigType, unMirror=0,):
+    if pmc.hasAttr(outputNode, 'outMatrix'):
+        index = outputNode.outMatrix.numElements()
+        if unMirror:
+            m = unMirrorMtx(ctrl.worldMatrix[0], name=ctrl.name().replace('ctrl', ''))
+            m.matrixSum.connect(outputNode.outMatrix[index])
+        else:
+            ctrl.worldMatrix[0].connect(outputNode.outMatrix[index])
+        pmc.select(None)
+        j = pmc.joint(name=ctrl.name().replace('ctrl', 'Out_Jnt'))
+        j.segmentScaleCompensate.set(0)
+        pmc.addAttr(j, ln='jointIndex', at='short', k=0)
+        pmc.addAttr(j, ln='rigType', dt='string')
+        j.rigType.set(rigType)
+        j.jointIndex.set(index)
+        d = pmc.createNode('decomposeMatrix', name=ctrl.name().replace('ctrl', 'mtx2Srt_utl'))
+        outputNode.outMatrix[index].connect(d.inputMatrix)
+        d.outputTranslate.connect(j.t)
+        d.outputRotate.connect(j.r)
+        d.outputScale.connect(j.s)

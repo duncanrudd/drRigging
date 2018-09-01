@@ -483,6 +483,17 @@ def getAimMatrix(start=None, end=None, axis='x', upAxis='y', worldUpAxis='y', up
 
     return outMatrix
 
+def matrixFromVectors(row1, row2, row3, row4, name):
+    '''
+    Takes 3 tri vectors and constructs a fourbyfour matrix from them
+    '''
+    m = pmc.createNode('fourByFourMatrix', name=name)
+    inputs = [m.in00, m.in01, m.in02, m.in10, m.in11, m.in12, m.in20, m.in21, m.in22, m.in30, m.in31, m.in32]
+    outputs = row1.children() + row2.children() + row3.children() + row4.children()
+    for i in range(12):
+        outputs[i].connect(inputs[i])
+    return m
+
 def matrixToSrt(matrix):
     '''
     converts a pymel matrix into translate, rotate, scale values
@@ -530,7 +541,7 @@ def multiply(input1, input2, name, operation=1):
         val = input1
         connect=False
 
-    if type(val) == pmc.datatypes.Vector:
+    if type(val) == pmc.datatypes.Vector or type(val) == tuple:
         if connect:
             input1.connect(md.input1)
         else:
@@ -548,7 +559,7 @@ def multiply(input1, input2, name, operation=1):
         val = input2
         connect=False
 
-    if type(val) == pmc.datatypes.Vector:
+    if type(val) == pmc.datatypes.Vector or type(val) == tuple:
         if connect:
             input2.connect(md.input2)
         else:
@@ -719,7 +730,7 @@ def dot(input1, input2, name, normalize=1):
     vp.normalizeOutput.set(normalize)
     return vp
 
-def pointMatrixMult(point, matrix, name):
+def pointMatrixMult(point, matrix, name, normalize=0):
     '''
     returns point transformed into the space of matrix
     '''
@@ -732,6 +743,7 @@ def pointMatrixMult(point, matrix, name):
     else:
         vp.input1.set(point)
     matrix.connect(vp.matrix)
+    vp.normalizeOutput.set(normalize)
     vp.operation.set(4)
     return vp
 
