@@ -2,6 +2,8 @@ import pymel.core as pmc
 import drRigging.utils.coreUtils as coreUtils
 import drRigging.utils.curveUtils as curveUtils
 import drRigging.objects.controls as controls
+import drRigging.nexus.artStickers_faceRigging as faceRigging
+reload(faceRigging)
 
 reload(curveUtils)
 reload(coreUtils)
@@ -241,18 +243,29 @@ def buildBaseRig(name='mouth', numTweaks=7):
         mp.fractionMode.set(1)
         tweakCtrls.append(ctrl)
         d = coreUtils.decomposeMatrix(ctrl.worldMatrix[0], name='%s_tweak_%s_mtx2Srt_utl' % (name, num))
-        if d.outputTranslateX.get() < 0.0:
-            bfr.sx.set(-1)
         if i==(numTweaks-1):
-            tanMult = coreUtils.convert(p8.input1, -0.5, name='%s_T_tweakInTan_utl' % name)
-            p = coreUtils.pointMatrixMult(tanMult.output, ctrl.worldMatrix[0], name='%s_T_tweakInTanPos_%s_utl' % (name, num))
-            points.append(p.output)                                        
+            tanMult = coreUtils.convert(p8.input1Y, -0.5, name='%s_T_tweakInTan_utl' % name)
+            b = coreUtils.addChild(tweakCtrls[-1], 'group', name=bfr.name().replace('bufferSrt', 'inTan_bufferSrt'))
+            tanMult.output.connect(b.ty)
+            c = controls.triCtrl(size = configDict['radius']*.05, aim='up', name='%s_tweak_%s_inTan_ctrl' % (name, num))
+            coreUtils.align(c, b, parent=1)
+            dm = coreUtils.decomposeMatrix(c.worldMatrix[0], name='%s_tweak_%s_inTanMtx2Srt_utl' % (name, num))
+            points.append(dm.outputTranslate)
+            tweakCtrls.append(c)
         points.append(d.outputTranslate)                                       
         if i==0:
-            tanMult = coreUtils.convert(p2.input1, 0.5, name='%s_T_tweakOutTan_utl' % name)
-            p = coreUtils.pointMatrixMult(tanMult.output, ctrl.worldMatrix[0], name='%s_T_tweakOutTanPos_%s_utl' % (name, num))
-            points.append(p.output)
+            tanMult = coreUtils.convert(p2.input1Y, 0.5, name='%s_T_tweakOutTan_utl' % name)
+            b = coreUtils.addChild(tweakCtrls[0], 'group', name=bfr.name().replace('bufferSrt', 'outTan_bufferSrt'))
+            tanMult.output.connect(b.ty)
+            c = controls.triCtrl(size = configDict['radius']*.05, aim='up', name='%s_tweak_%s_outTan_ctrl' % (name, num))
+            coreUtils.align(c, b, parent=1)
+            dm = coreUtils.decomposeMatrix(c.worldMatrix[0], name='%s_tweak_%s_outTanMtx2Srt_utl' % (name, num))
+            points.append(dm.outputTranslate)
+            tweakCtrls.append(c)
+        if d.outputTranslateX.get() < 0.0:
+            bfr.sx.set(-1)
         bfr.setParent(tweakGrp)
+
     btmPoints = [points[0]]    
     for i in range(numTweaks)[1:-1]:
         num = str(i+numTweaks).zfill(2)
@@ -270,21 +283,30 @@ def buildBaseRig(name='mouth', numTweaks=7):
         bfrAngle.vector1.set((0,0,1))
         bfrAngle.eulerY.connect(bfr.ry)
         mp.fractionMode.set(1)
-        tweakCtrls.append(ctrl)
         d = coreUtils.decomposeMatrix(ctrl.worldMatrix[0], name='%s_tweak_%s_mtx2Srt_utl' % (name, num))
+        if i==1:
+            tanMult = coreUtils.convert(p2.input1Y, -0.5, name='%s_B_tweakOutTan_utl' % name)
+            b = coreUtils.addChild(tweakCtrls[0], 'group', name=tweakCtrls[0].name().replace('ctrl', 'inTan_bufferSrt'))
+            tanMult.output.connect(b.ty)
+            c = controls.triCtrl(size = configDict['radius']*.05, aim='down', name=tweakCtrls[0].name().replace('ctrl', 'inTan_ctrl'))
+            coreUtils.align(c, b, parent=1)
+            dm = coreUtils.decomposeMatrix(c.worldMatrix[0], name='%s_tweak_%s_inTanMtx2Srt_utl' % (name, num))
+            btmPoints.append(dm.outputTranslate)
+            tweakCtrls.append(c)
+        btmPoints.append(d.outputTranslate)
+        tweakCtrls.append(ctrl)
+        if i==(numTweaks-2):
+            tanMult = coreUtils.convert(p8.input1Y, 0.5, name='%s_T_tweakInTan_utl' % name)
+            b = coreUtils.addChild(tweakCtrls[numTweaks], 'group', name=tweakCtrls[numTweaks].name().replace('ctrl', 'outTan_bufferSrt'))
+            tanMult.output.connect(b.ty)
+            c = controls.triCtrl(size = configDict['radius']*.05, aim='down', name=tweakCtrls[numTweaks].name().replace('ctrl', 'outTan_ctrl'))
+            coreUtils.align(c, b, parent=1)
+            dm = coreUtils.decomposeMatrix(c.worldMatrix[0], name='%s_tweak_%s_outTanMtx2Srt_utl' % (name, num))
+            btmPoints.append(dm.outputTranslate)
+            tweakCtrls.append(c)
         if d.outputTranslateX.get() < 0.0:
             bfr.sx.set(-1)
-        if i==1:
-            tanMult = coreUtils.convert(p2.input1, -0.5, name='%s_B_tweakOutTan_utl' % name)
-            p = coreUtils.pointMatrixMult(tanMult.output, tweakCtrls[0].worldMatrix[0], name='%s_B_tweakOutTanPos_%s_utl' % (name, num))
-            btmPoints.append(p.output)
-
-        btmPoints.append(d.outputTranslate)
-        if i==(numTweaks-2):
-            tanMult = coreUtils.convert(p8.input1, 0.5, name='%s_T_tweakInTan_utl' % name)
-            p = coreUtils.pointMatrixMult(tanMult.output, tweakCtrls[numTweaks-1].worldMatrix[0], name='%s_B_tweakInTanPos_%s_utl' % (name, num))
-            btmPoints.append(p.output)
-        bfr.setParent(rootSrt)
+        bfr.setParent(tweakGrp)
     btmPoints.append(points[-1])
     
     for p in range(len(points)):
@@ -301,53 +323,32 @@ def buildBaseRig(name='mouth', numTweaks=7):
     coreUtils.attrCtrl(nodeList=tweakCtrls, attrList=['rx', 'ry', 'rz', 'sx', 'sy', 'sz', 'visibility'])
     coreUtils.attrCtrl(nodeList=ctrls + tweakCtrls, attrList=['aiRenderCurve', 'aiCurveWidth', 'aiSampleRate', 'aiCurveShaderR', 'aiCurveShaderG', 'aiCurveShaderB'])
 
-def createJoints(topCrv, btmCrv, drvTopCrv, drvBtmCrv, outputNode, rootSrt, scaleSrt, numJoints=16, name='mouth', connect=1):
+def createJoints(R_tweak, L_tweak, topCrv, btmCrv, outputNode, rootSrt, scaleSrt, numJoints=16, name='mouth', connect=1):
     addOutputAttrs(outputNode)
     joints = []
-    shape = pmc.listRelatives(drvTopCrv, c=1, s=1)[0]
-    topMPs = pmc.listConnections(shape, type='motionPath')
-    topCtrls = []
-    shape = pmc.listRelatives(drvBtmCrv, c=1, s=1)[0]
-    btmMPs = pmc.listConnections(shape, type='motionPath')
-    btmCtrls = []
-    for mp in topMPs:
-        vp = pmc.listConnections(mp, s=0, type='vectorProduct')[0]
-        bfr = pmc.listConnections(vp, s=0, type='transform')[0]
-        topCtrls.append(pmc.listRelatives(bfr, c=1, type='transform')[0])
-    for mp in btmMPs:
-        vp = pmc.listConnections(mp, s=0, type='vectorProduct')[0]
-        bfr = pmc.listConnections(vp, s=0, type='transform')[0]
-        btmCtrls.append(pmc.listRelatives(bfr, c=1, type='transform')[0])
     d = coreUtils.isDecomposed(rootSrt)
     # top joints
     for i in range((numJoints/2)+1):
         num = str(i+1).zfill(2)
-        mp = pmc.createNode('motionPath', name='%s_T_output_%s_motionPath_utl' % (name, num))
-        topCrv.worldSpace[0].connect(mp.geometryPath)
-        mp.fractionMode.set(1)
-        mp.uValue.set((1.0 / (numJoints/2))*i)
+        if i == 0:
+            faceRigging.exposeOutput(R_tweak, outputNode, 'mouth', unMirror=1)
+        elif i == (numJoints/2):
+            faceRigging.exposeOutput(L_tweak, outputNode, 'mouth', unMirror=0)
+        else:
+            mp = pmc.createNode('motionPath', name='%s_T_output_%s_motionPath_utl' % (name, num))
+            topCrv.worldSpace[0].connect(mp.geometryPath)
+            mp.fractionMode.set(1)
+            mp.uValue.set((1.0 / (numJoints/2))*i)
+            vecZ = coreUtils.minus([mp.allCoordinates, d.outputTranslate], name='%s_T_row3Vec_%s_utl' % (name, num))
+            vpZ = coreUtils.normalizeVector(vecZ.output3D, name='%s_T_row3_%s_utl' % (name, num))
+            vpY = coreUtils.matrixAxisToVector(rootSrt, name='%s_T_row2_%s_utl' % (name, num), axis='y', normalize=1)
+            vpX = coreUtils.cross(vpY.output, vpZ.output, name='%s_T_row1_%s_utl' % (name, num), normalize=1)
+            vMultX = coreUtils.multiply(vpX.output, scaleSrt.s, name='%s_T_row1Scaled_%s_utl' % (name, num))
+            vMultY = coreUtils.multiply(vpY.output, scaleSrt.s, name='%s_T_row2Scaled_%s_utl' % (name, num))
+            vMultZ = coreUtils.multiply(vpZ.output, scaleSrt.s, name='%s_T_row3Scaled_%s_utl' % (name, num))
+            mtx = coreUtils.matrixFromVectors(vMultX.output, vMultY.output, vMultZ.output, mp.allCoordinates, name='%s_T_outMtx_%s_utl' % (name, num))
 
-        # To calculate blended rotation based on surrounding tweak controls:
-        rv = pmc.createNode('remapValue', name='%s_T_output_%s_rotationRemap_utl' % (name, num))
-        for j in range(len(topMPs)):
-            topMP = topMPs[j]
-            ctrl = topCtrls[j]
-            topMP.uValue.connect(rv.color[j].color_Position)
-            rv.color[j].color_Interp.set(1)
-            vp = coreUtils.matrixAxisToVector(ctrl.worldMatrix[0], axis='y', normalize=1, name=ctrl.name().replace('ctrl', 'mtxRow2_utl'))
-            vp.output.connect(rv.color[j].color_Color)
-        mp.uValue.connect(rv.inputValue)
-
-        vecZ = coreUtils.minus([mp.allCoordinates, d.outputTranslate], name='%s_T_row3Vec_%s_utl' % (name, num))
-        vpZ = coreUtils.normalizeVector(vecZ.output3D, name='%s_T_row3_%s_utl' % (name, num))
-        vpY = coreUtils.normalizeVector(rv.outColor, name='%s_T_row2_%s_utl' % (name, num))
-        vpX = coreUtils.cross(vpY.output, vpZ.output, name='%s_T_row1_%s_utl' % (name, num), normalize=1)
-        vMultX = coreUtils.multiply(vpX.output, scaleSrt.s, name='%s_T_row1Scaled_%s_utl' % (name, num))
-        vMultY = coreUtils.multiply(vpY.output, scaleSrt.s, name='%s_T_row2Scaled_%s_utl' % (name, num))
-        vMultZ = coreUtils.multiply(vpZ.output, scaleSrt.s, name='%s_T_row3Scaled_%s_utl' % (name, num))
-        mtx = coreUtils.matrixFromVectors(vMultX.output, vMultY.output, vMultZ.output, mp.allCoordinates, name='%s_T_outMtx_%s_utl' % (name, num))
-
-        mtx.output.connect(outputNode.outMatrix[i])
+            mtx.output.connect(outputNode.outMatrix[i])
 
         pmc.select(None)
         j = pmc.joint(name='%s_T_%s_Out_Jnt' % (name, num))
@@ -360,21 +361,9 @@ def createJoints(topCrv, btmCrv, drvTopCrv, drvBtmCrv, outputNode, rootSrt, scal
         btmCrv.worldSpace[0].connect(mp.geometryPath)
         mp.fractionMode.set(1)
         mp.uValue.set((1.0 / (numJoints/2))*(i+1))
-
-        # To calculate blended rotation based on surrounding tweak controls:
-        rv = pmc.createNode('remapValue', name='%s_B_output_%s_rotationRemap_utl' % (name, num))
-        for j in range(len(btmMPs)):
-            btmMP = btmMPs[j]
-            ctrl = btmCtrls[j]
-            btmMP.uValue.connect(rv.color[j].color_Position)
-            rv.color[j].color_Interp.set(1)
-            vp = coreUtils.matrixAxisToVector(ctrl.worldMatrix[0], axis='y', normalize=1, name=ctrl.name().replace('ctrl', 'mtxRow2_utl'))
-            vp.output.connect(rv.color[j].color_Color)
-        mp.uValue.connect(rv.inputValue)
-
         vecZ = coreUtils.minus([mp.allCoordinates, d.outputTranslate], name='%s_B_row3Vec_%s_utl' % (name, num))
         vpZ = coreUtils.normalizeVector(vecZ.output3D, name='%s_B_row3_%s_utl' % (name, num))
-        vpY = coreUtils.normalizeVector(rv.outColor, name='%s_T_row2_%s_utl' % (name, num))
+        vpY = coreUtils.matrixAxisToVector(rootSrt, name='%s_B_row2_%s_utl' % (name, num), axis='y', normalize=1)
         vpX = coreUtils.cross(vpY.output, vpZ.output, name='%s_B_row2_%s_utl' % (name, num), normalize=1)
         vMultX = coreUtils.multiply(vpX.output, scaleSrt.s, name='%s_B_row1Scaled_%s_utl' % (name, num))
         vMultY = coreUtils.multiply(vpY.output, scaleSrt.s, name='%s_B_row2Scaled_%s_utl' % (name, num))

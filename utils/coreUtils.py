@@ -756,7 +756,7 @@ def matrixAxisToVector(obj, name, axis='x', normalize=1):
     if type(obj) == pmc.general.Attribute:
         obj.connect(vp.matrix)
     else:
-        obj.worldMatrix.connect(vp.matrix)
+        obj.worldMatrix[0].connect(vp.matrix)
     vp.normalizeOutput.set(normalize)
     vp.operation.set(3)
     pmc.setAttr('%s.input1%s' % (vp.name(), axis[-1].upper()), 1)
