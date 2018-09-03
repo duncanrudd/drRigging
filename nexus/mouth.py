@@ -25,7 +25,7 @@ def addOutputAttrs(node):
     pmc.addAttr(ln='outMatrix', at='matrix', multi=1)
     #pmc.addAttr(ln='outMatrix', at='matrix', parent='outMatrix')
 
-def buildBaseRig(name='mouth', numTweaks=7):
+def buildBaseRig(name='mouth', numTweaks=7, tweaks=1):
     '''
     Create the bezier setup with corner, top and bottom controls.
     Radius sets the distance from the spin pivots to the rig
@@ -212,6 +212,9 @@ def buildBaseRig(name='mouth', numTweaks=7):
         'rigGrp':rigGrp
     }
 
+    if not tweaks:
+        return returnDict
+
     ##------------------------------TWEAKS-----------------------------------------##
 
     tweakCrv_T = curveUtils.curveBetweenNodes(start=(-10,0,0), end=(10,0,0), degree=2, numCVs=numTweaks+2, name='%s_T_tweak_crv' % name)
@@ -245,22 +248,24 @@ def buildBaseRig(name='mouth', numTweaks=7):
         d = coreUtils.decomposeMatrix(ctrl.worldMatrix[0], name='%s_tweak_%s_mtx2Srt_utl' % (name, num))
         if i==(numTweaks-1):
             tanMult = coreUtils.convert(p8.input1Y, -0.5, name='%s_T_tweakInTan_utl' % name)
+            tanPos = coreUtils.pointMatrixMult(tanMult.output, tweakCtrls[-1].worldMatrix[0], name='%s_T_tweakInTan_crvPos_utl' % name)
+            points.append(tanPos.output)
             b = coreUtils.addChild(tweakCtrls[-1], 'group', name=bfr.name().replace('bufferSrt', 'inTan_bufferSrt'))
             tanMult.output.connect(b.ty)
             c = controls.triCtrl(size = configDict['radius']*.05, aim='up', name='%s_tweak_%s_inTan_ctrl' % (name, num))
             coreUtils.align(c, b, parent=1)
             dm = coreUtils.decomposeMatrix(c.worldMatrix[0], name='%s_tweak_%s_inTanMtx2Srt_utl' % (name, num))
-            points.append(dm.outputTranslate)
             tweakCtrls.append(c)
-        points.append(d.outputTranslate)                                       
+        points.append(d.outputTranslate)
         if i==0:
             tanMult = coreUtils.convert(p2.input1Y, 0.5, name='%s_T_tweakOutTan_utl' % name)
+            tanPos = coreUtils.pointMatrixMult(tanMult.output, tweakCtrls[0].worldMatrix[0], name='%s_T_tweakOutTan_crvPos_utl' % name)
+            points.append(tanPos.output)
             b = coreUtils.addChild(tweakCtrls[0], 'group', name=bfr.name().replace('bufferSrt', 'outTan_bufferSrt'))
             tanMult.output.connect(b.ty)
             c = controls.triCtrl(size = configDict['radius']*.05, aim='up', name='%s_tweak_%s_outTan_ctrl' % (name, num))
             coreUtils.align(c, b, parent=1)
             dm = coreUtils.decomposeMatrix(c.worldMatrix[0], name='%s_tweak_%s_outTanMtx2Srt_utl' % (name, num))
-            points.append(dm.outputTranslate)
             tweakCtrls.append(c)
         if d.outputTranslateX.get() < 0.0:
             bfr.sx.set(-1)
@@ -286,23 +291,25 @@ def buildBaseRig(name='mouth', numTweaks=7):
         d = coreUtils.decomposeMatrix(ctrl.worldMatrix[0], name='%s_tweak_%s_mtx2Srt_utl' % (name, num))
         if i==1:
             tanMult = coreUtils.convert(p2.input1Y, -0.5, name='%s_B_tweakOutTan_utl' % name)
+            tanPos = coreUtils.pointMatrixMult(tanMult.output, tweakCtrls[0].worldMatrix[0], name='%s_B_tweakInTan_crvPos_utl' % name)
+            btmPoints.append(tanPos.output)
             b = coreUtils.addChild(tweakCtrls[0], 'group', name=tweakCtrls[0].name().replace('ctrl', 'inTan_bufferSrt'))
             tanMult.output.connect(b.ty)
             c = controls.triCtrl(size = configDict['radius']*.05, aim='down', name=tweakCtrls[0].name().replace('ctrl', 'inTan_ctrl'))
             coreUtils.align(c, b, parent=1)
             dm = coreUtils.decomposeMatrix(c.worldMatrix[0], name='%s_tweak_%s_inTanMtx2Srt_utl' % (name, num))
-            btmPoints.append(dm.outputTranslate)
             tweakCtrls.append(c)
         btmPoints.append(d.outputTranslate)
         tweakCtrls.append(ctrl)
         if i==(numTweaks-2):
-            tanMult = coreUtils.convert(p8.input1Y, 0.5, name='%s_T_tweakInTan_utl' % name)
+            tanMult = coreUtils.convert(p8.input1Y, 0.5, name='%s_B_tweakInTan_utl' % name)
+            tanPos = coreUtils.pointMatrixMult(tanMult.output, tweakCtrls[numTweaks].worldMatrix[0], name='%s_B_tweakOutTan_crvPos_utl' % name)
+            btmPoints.append(tanPos.output)
             b = coreUtils.addChild(tweakCtrls[numTweaks], 'group', name=tweakCtrls[numTweaks].name().replace('ctrl', 'outTan_bufferSrt'))
             tanMult.output.connect(b.ty)
             c = controls.triCtrl(size = configDict['radius']*.05, aim='down', name=tweakCtrls[numTweaks].name().replace('ctrl', 'outTan_ctrl'))
             coreUtils.align(c, b, parent=1)
             dm = coreUtils.decomposeMatrix(c.worldMatrix[0], name='%s_tweak_%s_outTanMtx2Srt_utl' % (name, num))
-            btmPoints.append(dm.outputTranslate)
             tweakCtrls.append(c)
         if d.outputTranslateX.get() < 0.0:
             bfr.sx.set(-1)
@@ -330,10 +337,11 @@ def createJoints(R_tweak, L_tweak, topCrv, btmCrv, outputNode, rootSrt, scaleSrt
     # top joints
     for i in range((numJoints/2)+1):
         num = str(i+1).zfill(2)
+        j=None
         if i == 0:
-            faceRigging.exposeOutput(R_tweak, outputNode, 'mouth', unMirror=1)
+            faceRigging.exposeOutput(R_tweak, outputNode, 'mouth', unMirror=1, createJoint=0)
         elif i == (numJoints/2):
-            faceRigging.exposeOutput(L_tweak, outputNode, 'mouth', unMirror=0)
+            faceRigging.exposeOutput(L_tweak, outputNode, 'mouth', unMirror=0, createJoint=0)
         else:
             mp = pmc.createNode('motionPath', name='%s_T_output_%s_motionPath_utl' % (name, num))
             topCrv.worldSpace[0].connect(mp.geometryPath)
@@ -370,7 +378,7 @@ def createJoints(R_tweak, L_tweak, topCrv, btmCrv, outputNode, rootSrt, scaleSrt
         vMultZ = coreUtils.multiply(vpZ.output, scaleSrt.s, name='%s_B_row3Scaled_%s_utl' % (name, num))
         mtx = coreUtils.matrixFromVectors(vMultX.output, vMultY.output, vMultZ.output, mp.allCoordinates, name='%s_B_outMtx_%s_utl' % (name, num))
 
-        print mtx.output.connect(outputNode.outMatrix[i+((numJoints/2)+1)])
+        mtx.output.connect(outputNode.outMatrix[i+((numJoints/2)+1)])
 
         pmc.select(None)
         j = pmc.joint(name='%s_B_%s_Out_Jnt' % (name, num))

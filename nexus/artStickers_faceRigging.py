@@ -185,8 +185,8 @@ def loadWeights(weightsPath):
         if not skin:
             print 'no skin cluster found on %s' % node.name()
             continue
-        #pmc.setAttr('%s.maxInfluences' % skin, 4)
-        #pmc.setAttr('%s.maintainMaxInfluences' % skin, 1)
+        pmc.setAttr('%s.maxInfluences' % skin, 4)
+        pmc.setAttr('%s.maintainMaxInfluences' % skin, 1)
 
         # Get list of joints from weights file
         weights = None
@@ -234,7 +234,7 @@ def unMirrorMtx(mtx, name):
     mtx.connect(mult.matrixIn[1])
     return mult
 
-def exposeOutput(ctrl, outputNode, rigType, unMirror=0,):
+def exposeOutput(ctrl, outputNode, rigType, unMirror=0, createJoint=1):
     if pmc.hasAttr(outputNode, 'outMatrix'):
         index = outputNode.outMatrix.numElements()
         if unMirror:
@@ -242,15 +242,18 @@ def exposeOutput(ctrl, outputNode, rigType, unMirror=0,):
             m.matrixSum.connect(outputNode.outMatrix[index])
         else:
             ctrl.worldMatrix[0].connect(outputNode.outMatrix[index])
-        pmc.select(None)
-        j = pmc.joint(name=ctrl.name().replace('ctrl', 'Out_Jnt'))
-        j.segmentScaleCompensate.set(0)
-        pmc.addAttr(j, ln='jointIndex', at='short', k=0)
-        pmc.addAttr(j, ln='rigType', dt='string')
-        j.rigType.set(rigType)
-        j.jointIndex.set(index)
-        d = pmc.createNode('decomposeMatrix', name=ctrl.name().replace('ctrl', 'mtx2Srt_utl'))
-        outputNode.outMatrix[index].connect(d.inputMatrix)
-        d.outputTranslate.connect(j.t)
-        d.outputRotate.connect(j.r)
-        d.outputScale.connect(j.s)
+        if createJoint:
+            pmc.select(None)
+            j = pmc.joint(name=ctrl.name().replace('ctrl', 'Out_Jnt'))
+            j.segmentScaleCompensate.set(0)
+
+            pmc.addAttr(j, ln='jointIndex', at='short', k=0)
+            pmc.addAttr(j, ln='rigType', dt='string')
+            j.rigType.set(rigType)
+            j.jointIndex.set(index)
+            d = pmc.createNode('decomposeMatrix', name=ctrl.name().replace('ctrl', 'mtx2Srt_utl'))
+            outputNode.outMatrix[index].connect(d.inputMatrix)
+            d.outputTranslate.connect(j.t)
+            d.outputRotate.connect(j.r)
+            d.outputScale.connect(j.s)
+            return j
