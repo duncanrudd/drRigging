@@ -54,6 +54,8 @@ def buildBaseRig(name='mouth', numTweaks=7, tweaks=1):
     addOutputAttrs(outputGrp)
 
     pmc.addAttr(outputGrp, ln='outputType', dt='string')
+    # in case there is a discrepancy between the neck joint and the head control
+    pmc.addAttr(outputGrp, ln='ctrl2Joint_offset_mtx', at='matrix')
     outputGrp.outputType.set('mouth')
 
     # Config node
