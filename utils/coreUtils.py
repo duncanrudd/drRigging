@@ -1021,3 +1021,6 @@ def forceAbsolute(attr, name):
     mdSquare = power(attr, 2.0, name='%s_square_utl' % name)
     mdSquareRoot = power(mdSquare.outputX, 0.5, name='%s_squareRoot_utl' % name)
     return [mdSquare, mdSquareRoot]
+
+def remap(x, in_min, in_max, out_min, out_max):
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
