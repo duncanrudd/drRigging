@@ -36,6 +36,7 @@ def connectJoints():
             d.outputTranslate.connect(j.t)
             d.outputRotate.connect(j.r)
             d.outputScale.connect(j.s)
+            j.jointOrient.set((0,0,0))
 
 def connectFaceElemsInComboRig(comboRigPath):
     cmds.file(new=1, force=1)
@@ -166,8 +167,9 @@ def mergeJoints(faceSkinPath):
 
     cmds.file(faceSkinPath, i=1, namespace='face')
     for j in pmc.ls('face:*', type='joint'):
-        j.setParent('Root_Out_Jnt')
+        j.setParent(pmc.ls('Neck_??_Out_Jnt')[-1])
         pmc.disconnectAttr(j.getParent().s, j.inverseScale)
+
     pmc.namespace(removeNamespace='face', mergeNamespaceWithRoot=1)
 
 def loadWeights(weightsPath):
@@ -257,3 +259,15 @@ def exposeOutput(ctrl, outputNode, rigType, unMirror=0, createJoint=1):
             d.outputRotate.connect(j.r)
             d.outputScale.connect(j.s)
             return j
+
+def copyWeights(sourceMesh, destMesh):
+    '''
+    Select skinned mesh then non-skinned mesh and run: copyWeights(pmc.selected()[0], pmc.selected()[1])
+    '''
+
+    sourceSkin = [x for x in pmc.listHistory(sourceMesh) if pmc.nodeType(x) == "skinCluster" ][0]
+    influences = pmc.skinCluster(sourceMesh, q=1, influence=1)
+    pmc.select(influences)
+
+    destSkin = pmc.skinCluster(influences, destMesh)
+    pmc.copySkinWeights( ss=sourceSkin.name(), ds=destSkin.name(), noMirror=True )
