@@ -190,8 +190,9 @@ def loadWeights(weightsPath):
         if not skin:
             print 'no skin cluster found on %s' % node.name()
             continue
-        pmc.setAttr('%s.maxInfluences' % skin, 4)
-        pmc.setAttr('%s.maintainMaxInfluences' % skin, 1)
+        #pmc.setAttr('%s.maxInfluences' % skin, 4)
+        pmc.setAttr('%s.maintainMaxInfluences' % skin, 0)
+        pmc.setAttr('%s.weightDistribution' % skin, 1)
 
         # Get list of joints from weights file
         weights = None
