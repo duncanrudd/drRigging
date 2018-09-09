@@ -167,7 +167,10 @@ def mergeJoints(faceSkinPath):
 
     cmds.file(faceSkinPath, i=1, namespace='face')
     for j in pmc.ls('face:*', type='joint'):
-        j.setParent(pmc.ls('Neck_??_Out_Jnt')[-1])
+        try:
+            j.setParent(pmc.ls('Neck_??_Out_Jnt')[-1])
+        except:
+            j.setParent(pmc.PyNode('Body_Out_Jnt'))
         pmc.disconnectAttr(j.getParent().s, j.inverseScale)
 
     pmc.namespace(removeNamespace='face', mergeNamespaceWithRoot=1)
